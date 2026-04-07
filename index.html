@@ -9,14 +9,6 @@
 <meta name="theme-color" content="#06080f">
 <title>Hood Brief</title>
 
-<!--
-  ╔══════════════════════════════════════════╗
-  ║  HOOD BRIEF — CONFIGURATION              ║
-  ║  Find the CONFIG block below (~line 80)  ║
-  ║  Replace SUPABASE_URL + SUPABASE_ANON_KEY║
-  ╚══════════════════════════════════════════╝
--->
-
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
@@ -52,9 +44,7 @@
   --fire-dim:   rgba(255,107,26,0.12);
   --fire-bdr:   rgba(255,107,26,0.28);
   --memphis:    #ff3d4f;
-  --dc:         #3d9eff;
-  --radius-col: rgba(245,200,66,0.15);
-  --radius-bdr: rgba(245,200,66,0.5);
+  --baltimore:  #3d9eff;
   --font:       'Space Grotesk', sans-serif;
   --mono:       'Space Mono', monospace;
 }
@@ -69,7 +59,6 @@ html, body {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* ── HEADER ── */
 #header {
   display: flex;
   align-items: center;
@@ -82,220 +71,110 @@ html, body {
   z-index: 300;
   position: relative;
 }
-
-.logo {
-  display: flex;
-  align-items: baseline;
-  gap: 3px;
-}
-.logo-hood {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--gold);
-  letter-spacing: -0.5px;
-}
-.logo-brief {
-  font-size: 18px;
-  font-weight: 300;
-  color: var(--text);
-  letter-spacing: -0.5px;
-}
+.logo-hood  { font-size: 18px; font-weight: 700; color: var(--gold); letter-spacing: -0.5px; }
+.logo-brief { font-size: 18px; font-weight: 300; color: var(--text); letter-spacing: -0.5px; }
 
 .live-badge {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-family: var(--mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 1.5px;
-  color: var(--red);
-  background: var(--red-dim);
-  border: 1px solid var(--red-bdr);
-  padding: 3px 8px;
-  border-radius: 3px;
+  display: flex; align-items: center; gap: 5px;
+  font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: 1.5px;
+  color: var(--red); background: var(--red-dim); border: 1px solid var(--red-bdr);
+  padding: 3px 8px; border-radius: 3px;
 }
 .live-dot {
-  width: 5px; height: 5px;
-  border-radius: 50%;
-  background: var(--red);
+  width: 5px; height: 5px; border-radius: 50%; background: var(--red);
   animation: blink 1.3s ease-in-out infinite;
 }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
 
 #clock {
-  margin-left: auto;
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--text3);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.5px;
+  margin-left: auto; font-family: var(--mono); font-size: 12px;
+  color: var(--text3); font-variant-numeric: tabular-nums;
 }
 #conn-dot {
-  width: 7px; height: 7px;
-  border-radius: 50%;
-  background: var(--text3);
-  transition: all 0.4s;
-  flex-shrink: 0;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--text3); transition: all 0.4s; flex-shrink: 0;
 }
 #conn-dot.ok  { background: var(--green); box-shadow: 0 0 5px var(--green); }
 #conn-dot.err { background: var(--red); }
 
-/* ── CITY TABS ── */
 #city-tabs {
-  display: flex;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
+  display: flex; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0;
 }
 .city-tab {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  color: var(--text3);
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: all 0.18s;
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.5px;
+  color: var(--text3); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.18s;
 }
 .city-tab:first-child { border-right: 1px solid var(--border); }
 .city-tab.active { color: var(--text); }
-.city-tab.active.mem { border-bottom-color: var(--memphis); }
-.city-tab.active.dc  { border-bottom-color: var(--dc); }
+.city-tab.active.mem  { border-bottom-color: var(--memphis); }
+.city-tab.active.balt { border-bottom-color: var(--baltimore); }
 .tab-n {
-  font-family: var(--mono);
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 2px;
-  font-variant-numeric: tabular-nums;
+  font-family: var(--mono); font-size: 10px; padding: 1px 6px;
+  border-radius: 2px; font-variant-numeric: tabular-nums;
 }
-.city-tab.mem .tab-n { background: var(--red-dim);  color: var(--red); }
-.city-tab.dc  .tab-n { background: var(--blue-dim); color: var(--blue); }
+.city-tab.mem  .tab-n { background: var(--red-dim);  color: var(--red); }
+.city-tab.balt .tab-n { background: var(--blue-dim); color: var(--blue); }
 
-/* ── RADIUS SEARCH BAR ── */
 #radius-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: var(--surface2);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  background: var(--surface2); border-bottom: 1px solid var(--border); flex-shrink: 0;
 }
+#addr-wrap { flex: 1; display: flex; flex-direction: column; gap: 0; min-width: 0; }
+#addr-row  { display: flex; gap: 8px; align-items: center; }
 
 #addr-input {
-  flex: 1;
-  background: var(--surface3);
-  border: 1px solid var(--border2);
-  border-radius: 5px;
-  padding: 7px 11px;
-  font-family: var(--font);
-  font-size: 13px;
-  color: var(--text);
-  outline: none;
-  transition: border-color 0.15s;
-  min-width: 0;
+  flex: 1; background: var(--surface3); border: 1px solid var(--border2);
+  border-radius: 5px; padding: 7px 11px; font-family: var(--font); font-size: 13px;
+  color: var(--text); outline: none; transition: border-color 0.15s; min-width: 0;
 }
 #addr-input::placeholder { color: var(--text3); }
 #addr-input:focus { border-color: var(--gold); }
 
 #search-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 13px;
-  background: var(--gold);
-  color: var(--bg);
-  border: none;
-  border-radius: 5px;
-  font-family: var(--font);
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: opacity 0.15s, transform 0.1s;
-  flex-shrink: 0;
+  padding: 7px 13px; background: var(--gold); color: var(--bg); border: none;
+  border-radius: 5px; font-family: var(--font); font-size: 12px; font-weight: 700;
+  cursor: pointer; white-space: nowrap; transition: opacity 0.15s, transform 0.1s; flex-shrink: 0;
 }
-#search-btn:hover   { opacity: 0.9; }
-#search-btn:active  { transform: scale(0.97); }
+#search-btn:hover  { opacity: 0.9; }
+#search-btn:active { transform: scale(0.97); }
 #search-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 #clear-btn {
-  padding: 7px 10px;
-  background: transparent;
-  border: 1px solid var(--border2);
-  border-radius: 5px;
-  color: var(--text2);
-  font-size: 12px;
-  cursor: pointer;
-  white-space: nowrap;
-  display: none;
-  flex-shrink: 0;
-  font-family: var(--font);
-  transition: all 0.15s;
+  padding: 7px 10px; background: transparent; border: 1px solid var(--border2);
+  border-radius: 5px; color: var(--text2); font-size: 12px; cursor: pointer;
+  white-space: nowrap; display: none; flex-shrink: 0; font-family: var(--font); transition: all 0.15s;
 }
 #clear-btn:hover { border-color: var(--red); color: var(--red); }
 #clear-btn.visible { display: block; }
 
-#radius-status {
-  width: 100%;
-  font-size: 11px;
-  font-family: var(--mono);
-  color: var(--gold);
-  display: none;
-  margin-top: 4px;
-  letter-spacing: 0.3px;
-}
+#radius-status { font-size: 11px; font-family: var(--mono); color: var(--gold); display: none; margin-top: 4px; }
 #radius-status.visible { display: block; }
+#geo-error { font-family: var(--mono); font-size: 10px; color: var(--red); display: none; margin-top: 4px; }
+#geo-error.visible { display: block; }
 
-/* ── FILTER BAR ── */
 #filter-bar {
-  display: flex;
-  gap: 5px;
-  padding: 7px 11px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  overflow-x: auto;
-  flex-shrink: 0;
-  scrollbar-width: none;
+  display: flex; gap: 5px; padding: 7px 11px; background: var(--surface);
+  border-bottom: 1px solid var(--border); overflow-x: auto; flex-shrink: 0; scrollbar-width: none;
 }
 #filter-bar::-webkit-scrollbar { display: none; }
 
 .chip {
-  font-family: var(--mono);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-  padding: 4px 10px;
-  border-radius: 3px;
-  border: 1px solid var(--border2);
-  color: var(--text2);
-  background: transparent;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: all 0.13s;
-  flex-shrink: 0;
+  font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: 0.8px;
+  text-transform: uppercase; padding: 4px 10px; border-radius: 3px;
+  border: 1px solid var(--border2); color: var(--text2); background: transparent;
+  white-space: nowrap; cursor: pointer; transition: all 0.13s; flex-shrink: 0;
 }
 .chip:active { transform: scale(0.96); }
-.chip.active                  { border-color: transparent; color: var(--bg); }
-.chip[data-f="all"].active    { background: var(--gold); }
-.chip[data-f="p1"].active     { background: var(--red); }
-.chip[data-f="p2"].active     { background: var(--amber); }
-.chip[data-f="p3"].active     { background: var(--green); }
-.chip[data-f="medical"].active{ background: var(--blue); }
-.chip[data-f="fire"].active   { background: var(--fire); }
+.chip.active { border-color: transparent; color: var(--bg); }
+.chip[data-f="all"].active     { background: var(--gold); }
+.chip[data-f="p1"].active      { background: var(--red); }
+.chip[data-f="p2"].active      { background: var(--amber); }
+.chip[data-f="p3"].active      { background: var(--green); }
+.chip[data-f="medical"].active { background: var(--blue); }
+.chip[data-f="fire"].active    { background: var(--fire); }
 
-/* ── MAIN LAYOUT ── */
-#main {
-  display: flex;
-  overflow: hidden;
-}
+#main { display: flex; overflow: hidden; }
 @media (min-width: 720px) {
   #main { flex-direction: row; height: calc(100dvh - 50px - 36px - 52px - 38px); }
   #feed-panel { width: 370px; min-width: 370px; border-right: 1px solid var(--border); }
@@ -307,83 +186,42 @@ html, body {
   #map-panel  { flex: 1; min-height: 0; }
 }
 
-/* ── FEED PANEL ── */
-#feed-panel {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: var(--bg);
-}
+#feed-panel { display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
 #feed-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 5px 12px;
-  background: var(--surface2);
-  border-bottom: 1px solid var(--border);
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 1px;
-  color: var(--text3);
-  text-transform: uppercase;
-  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 12px; background: var(--surface2); border-bottom: 1px solid var(--border);
+  font-family: var(--mono); font-size: 10px; letter-spacing: 1px; color: var(--text3);
+  text-transform: uppercase; flex-shrink: 0;
 }
 #feed-count { color: var(--gold); font-weight: 700; }
 
 #feed-scroll {
-  flex: 1;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: var(--surface3) transparent;
+  flex: 1; overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin; scrollbar-color: var(--surface3) transparent;
 }
 #feed-scroll::-webkit-scrollbar { width: 3px; }
 #feed-scroll::-webkit-scrollbar-thumb { background: var(--surface3); }
 
-/* ── INCIDENT CARD ── */
 .incident {
-  padding: 11px 12px;
-  border-bottom: 1px solid var(--border);
-  cursor: pointer;
-  transition: background 0.1s;
-  position: relative;
+  padding: 11px 12px; border-bottom: 1px solid var(--border);
+  cursor: pointer; transition: background 0.1s; position: relative;
   animation: slideIn 0.25s ease forwards;
 }
-@keyframes slideIn {
-  from { opacity:0; transform:translateY(-6px); }
-  to   { opacity:1; transform:translateY(0); }
-}
+@keyframes slideIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
 .incident::before {
-  content:'';
-  position:absolute;
-  left:0; top:0; bottom:0;
-  width:3px;
-  background:transparent;
-  transition:background 0.15s;
+  content:''; position:absolute; left:0; top:0; bottom:0;
+  width:3px; background:transparent; transition:background 0.15s;
 }
-.incident:hover               { background: var(--surface2); }
-.incident.selected            { background: rgba(245,200,66,0.04); }
-.incident.selected::before    { background: var(--gold); }
-.incident.in-radius           { background: rgba(245,200,66,0.03); }
-.incident.in-radius::before   { background: var(--gold); }
+.incident:hover            { background: var(--surface2); }
+.incident.selected         { background: rgba(245,200,66,0.04); }
+.incident.selected::before { background: var(--gold); }
+.incident.in-radius        { background: rgba(245,200,66,0.03); }
 
-.inc-row1 {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  margin-bottom: 5px;
-  flex-wrap: wrap;
-}
+.inc-row1 { display: flex; align-items: center; gap: 5px; margin-bottom: 5px; flex-wrap: wrap; }
 
 .badge {
-  font-family: var(--mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  padding: 2px 6px;
-  border-radius: 2px;
-  flex-shrink: 0;
+  font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: 1px;
+  text-transform: uppercase; padding: 2px 6px; border-radius: 2px; flex-shrink: 0;
 }
 .badge-p1      { background:var(--red-dim);   color:var(--red);   border:1px solid var(--red-bdr); }
 .badge-p2      { background:var(--amber-dim); color:var(--amber); border:1px solid var(--amber-bdr); }
@@ -391,186 +229,52 @@ html, body {
 .badge-medical { background:var(--blue-dim);  color:var(--blue);  border:1px solid var(--blue-bdr); }
 .badge-fire    { background:var(--fire-dim);  color:var(--fire);  border:1px solid var(--fire-bdr); }
 
-.city-pill {
-  font-family: var(--mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.8px;
-  padding: 2px 6px;
-  border-radius: 2px;
-}
-.city-pill.memphis { background:var(--red-dim);  color:var(--red); }
-.city-pill.dc      { background:var(--blue-dim); color:var(--blue); }
+.city-pill { font-family:var(--mono); font-size:9px; font-weight:700; letter-spacing:0.8px; padding:2px 6px; border-radius:2px; }
+.city-pill.memphis   { background:var(--red-dim);  color:var(--red); }
+.city-pill.baltimore { background:var(--blue-dim); color:var(--blue); }
 
-.radius-tag {
-  font-family: var(--mono);
-  font-size: 9px;
-  font-weight: 700;
-  color: var(--gold);
-  background: var(--gold-dim);
-  border: 1px solid var(--gold-bdr);
-  padding: 2px 6px;
-  border-radius: 2px;
-}
-
-.new-tag {
-  font-family: var(--mono);
-  font-size: 9px;
-  font-weight: 700;
-  color: var(--green);
-  background: var(--green-dim);
-  border: 1px solid var(--green-bdr);
-  padding: 2px 6px;
-  border-radius: 2px;
-  animation: fadeTag 5s forwards;
-}
+.radius-tag { font-family:var(--mono); font-size:9px; font-weight:700; color:var(--gold); background:var(--gold-dim); border:1px solid var(--gold-bdr); padding:2px 6px; border-radius:2px; }
+.new-tag    { font-family:var(--mono); font-size:9px; font-weight:700; color:var(--green); background:var(--green-dim); border:1px solid var(--green-bdr); padding:2px 6px; border-radius:2px; animation:fadeTag 5s forwards; }
 @keyframes fadeTag { 0%,65%{opacity:1} 100%{opacity:0} }
 
-.inc-time {
-  margin-left: auto;
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--text3);
-  font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
-}
-.inc-dist {
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--gold);
-  flex-shrink: 0;
-}
+.inc-time  { margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--text3); font-variant-numeric:tabular-nums; flex-shrink:0; }
+.inc-title { font-size:14px; font-weight:600; color:var(--text); line-height:1.3; margin-bottom:4px; }
+.inc-loc   { display:flex; align-items:center; gap:5px; font-size:12px; color:var(--text2); margin-bottom:3px; }
+.inc-units { font-family:var(--mono); font-size:10px; color:var(--text3); }
 
-.inc-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
-  line-height: 1.3;
-  margin-bottom: 4px;
-}
-.inc-loc {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  color: var(--text2);
-  margin-bottom: 3px;
-}
-.inc-units {
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--text3);
-  letter-spacing: 0.3px;
-}
+.state-msg { padding:36px 18px; text-align:center; font-family:var(--mono); font-size:11px; letter-spacing:1px; color:var(--text3); text-transform:uppercase; line-height:1.8; }
+.state-msg .ico { font-size:26px; display:block; margin-bottom:10px; }
 
-.state-msg {
-  padding: 36px 18px;
-  text-align: center;
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 1px;
-  color: var(--text3);
-  text-transform: uppercase;
-  line-height: 1.8;
-}
-.state-msg .ico { font-size: 26px; display: block; margin-bottom: 10px; }
-
-/* ── MAP ── */
 #map-panel { position: relative; }
 #map { width:100%; height:100%; }
 .leaflet-tile-pane { filter: brightness(0.5) saturate(0.35) hue-rotate(185deg); }
 .leaflet-container { background: #040608; }
 
 .leaflet-popup-content-wrapper {
-  background: var(--surface2) !important;
-  color: var(--text) !important;
-  border: 1px solid var(--border2) !important;
-  border-radius: 7px !important;
-  box-shadow: 0 16px 48px rgba(0,0,0,0.85) !important;
-  font-family: var(--font) !important;
+  background: var(--surface2) !important; color: var(--text) !important;
+  border: 1px solid var(--border2) !important; border-radius: 7px !important;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.85) !important; font-family: var(--font) !important;
 }
-.leaflet-popup-tip       { background: var(--surface2) !important; }
-.leaflet-popup-content   { margin: 13px 15px !important; min-width: 200px; }
+.leaflet-popup-tip { background: var(--surface2) !important; }
+.leaflet-popup-content { margin: 13px 15px !important; min-width: 200px; }
 .leaflet-popup-close-button { color: var(--text2) !important; font-size: 16px !important; }
 
-.p-badge  { display:inline-block; font-family:var(--mono); font-size:9px; font-weight:700; letter-spacing:1px; text-transform:uppercase; padding:2px 7px; border-radius:2px; margin-bottom:7px; }
-.p-title  { font-size:14px; font-weight:600; color:var(--text); margin-bottom:8px; line-height:1.3; }
-.p-row    { font-size:12px; color:var(--text2); margin-bottom:4px; display:flex; gap:6px; align-items:flex-start; }
-.p-row b  { color:var(--text); font-weight:500; }
-.p-dist   { font-family:var(--mono); font-size:11px; color:var(--gold); margin-top:6px; padding-top:6px; border-top:1px solid var(--border); }
-.p-tx     { font-size:11px; color:var(--text3); font-style:italic; line-height:1.5; margin-top:6px; padding-top:6px; border-top:1px solid var(--border); }
+.p-badge { display:inline-block; font-family:var(--mono); font-size:9px; font-weight:700; letter-spacing:1px; text-transform:uppercase; padding:2px 7px; border-radius:2px; margin-bottom:7px; }
+.p-title { font-size:14px; font-weight:600; color:var(--text); margin-bottom:8px; line-height:1.3; }
+.p-row   { font-size:12px; color:var(--text2); margin-bottom:4px; display:flex; gap:6px; }
+.p-row b { color:var(--text); font-weight:500; }
+.p-dist  { font-family:var(--mono); font-size:11px; color:var(--gold); margin-top:6px; padding-top:6px; border-top:1px solid var(--border); }
+.p-tx    { font-size:11px; color:var(--text3); font-style:italic; line-height:1.5; margin-top:6px; padding-top:6px; border-top:1px solid var(--border); }
 
-/* Map overlays */
-#map-stats {
-  position: absolute;
-  bottom: 28px;
-  right: 10px;
-  z-index: 1000;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  pointer-events: none;
-}
-.stat-pill {
-  background: rgba(6,8,15,0.88);
-  border: 1px solid var(--border2);
-  border-radius: 3px;
-  padding: 4px 10px;
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.5px;
-  color: var(--text2);
-  backdrop-filter: blur(8px);
-  text-transform: uppercase;
-}
+#map-stats { position:absolute; bottom:28px; right:10px; z-index:1000; display:flex; flex-direction:column; gap:5px; pointer-events:none; }
+.stat-pill { background:rgba(6,8,15,0.88); border:1px solid var(--border2); border-radius:3px; padding:4px 10px; font-family:var(--mono); font-size:10px; letter-spacing:0.5px; color:var(--text2); backdrop-filter:blur(8px); text-transform:uppercase; }
 .stat-pill b { color: var(--gold); }
 
-/* Radius results banner on map */
-#radius-banner {
-  position: absolute;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 1000;
-  background: rgba(6,8,15,0.92);
-  border: 1px solid var(--gold-bdr);
-  border-radius: 5px;
-  padding: 6px 14px;
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--gold);
-  letter-spacing: 0.5px;
-  backdrop-filter: blur(8px);
-  white-space: nowrap;
-  display: none;
-  pointer-events: none;
-}
+#radius-banner { position:absolute; top:10px; left:50%; transform:translateX(-50%); z-index:1000; background:rgba(6,8,15,0.92); border:1px solid var(--gold-bdr); border-radius:5px; padding:6px 14px; font-family:var(--mono); font-size:11px; color:var(--gold); backdrop-filter:blur(8px); white-space:nowrap; display:none; pointer-events:none; }
 #radius-banner.visible { display: block; }
 
-/* ── TOAST ── */
-#toast-wrap {
-  position: fixed;
-  top: 58px;
-  right: 12px;
-  z-index: 9000;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  pointer-events: none;
-  max-width: 290px;
-}
-.toast {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  background: var(--surface2);
-  border: 1px solid var(--border2);
-  border-radius: 6px;
-  padding: 10px 12px;
-  pointer-events: all;
-  cursor: pointer;
-  animation: tIn 0.25s ease forwards;
-}
+#toast-wrap { position:fixed; top:58px; right:12px; z-index:9000; display:flex; flex-direction:column; gap:6px; pointer-events:none; max-width:290px; }
+.toast { display:flex; align-items:flex-start; gap:9px; background:var(--surface2); border:1px solid var(--border2); border-radius:6px; padding:10px 12px; pointer-events:all; cursor:pointer; animation:tIn 0.25s ease forwards; }
 .toast.out { animation: tOut 0.25s ease forwards; }
 @keyframes tIn  { from{opacity:0;transform:translateX(16px)} to{opacity:1;transform:translateX(0)} }
 @keyframes tOut { from{opacity:1;transform:translateX(0)} to{opacity:0;transform:translateX(16px)} }
@@ -579,56 +283,20 @@ html, body {
 .t-title{ font-size:13px; font-weight:600; color:var(--text); }
 .t-loc  { font-size:11px; color:var(--text2); margin-top:2px; }
 
-/* ── BOOT OVERLAY ── */
-#boot-overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--bg);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 18px;
-  z-index: 9999;
-}
+#boot-overlay { position:fixed; inset:0; background:var(--bg); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; z-index:9999; }
 #boot-overlay.gone { display: none; }
-.boot-logo { font-size: 32px; font-weight: 700; }
-.boot-logo span:first-child { color: var(--gold); }
-.boot-logo span:last-child  { color: var(--text); font-weight: 300; }
-.boot-msg { font-family: var(--mono); font-size: 12px; color: var(--text2); letter-spacing: 1px; text-transform: uppercase; }
-.spinner {
-  width: 32px; height: 32px;
-  border: 2px solid var(--surface3);
-  border-top-color: var(--gold);
-  border-radius: 50%;
-  animation: spin 0.75s linear infinite;
-}
+.boot-logo span:first-child { font-size:32px; font-weight:700; color:var(--gold); }
+.boot-logo span:last-child  { font-size:32px; font-weight:300; color:var(--text); }
+.boot-msg { font-family:var(--mono); font-size:12px; color:var(--text2); letter-spacing:1px; text-transform:uppercase; }
+.spinner  { width:32px; height:32px; border:2px solid var(--surface3); border-top-color:var(--gold); border-radius:50%; animation:spin 0.75s linear infinite; }
 @keyframes spin { to { transform:rotate(360deg); } }
 
-.leaflet-control-zoom a {
-  background: var(--surface2) !important;
-  color: var(--text) !important;
-  border-color: var(--border2) !important;
-}
-.leaflet-control-zoom a:hover { background: var(--surface3) !important; }
-
-/* Geocode error */
-#geo-error {
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--red);
-  letter-spacing: 0.5px;
-  display: none;
-  margin-top: 4px;
-}
-#geo-error.visible { display: block; }
+.leaflet-control-zoom a { background:var(--surface2) !important; color:var(--text) !important; border-color:var(--border2) !important; }
+.leaflet-control-zoom a:hover { background:var(--surface3) !important; }
 </style>
 </head>
 <body>
 
-<!-- ╔══════════════════════════════════════════╗ -->
-<!-- ║  EDIT THESE TWO VALUES THEN SAVE         ║ -->
-<!-- ╚══════════════════════════════════════════╝ -->
 <script>
 const CONFIG = {
   SUPABASE_URL:      "https://xnjulaohljlgajxfrqrb.supabase.co",
@@ -636,50 +304,40 @@ const CONFIG = {
   INITIAL_LOAD: 100,
   RADIUS_MILES: 5,
   CITIES: {
-    memphis: { label:"Memphis, TN",     center:[35.1495,-90.0490], zoom:12 },
+    memphis:   { label:"Memphis, TN",   center:[35.1495,-90.0490], zoom:12 },
     baltimore: { label:"Baltimore, MD", center:[39.2904,-76.6122], zoom:12 }
   }
 };
 </script>
 
-<!-- Boot overlay -->
 <div id="boot-overlay">
   <div class="boot-logo"><span>Hood</span><span>Brief</span></div>
   <div class="spinner"></div>
-  <div class="boot-msg" id="boot-msg">Initializing…</div>
+  <div class="boot-msg" id="boot-msg">Connecting…</div>
 </div>
 
-<!-- Toast container -->
 <div id="toast-wrap"></div>
 
-<!-- Header -->
 <div id="header">
-  <div class="logo">
-    <span class="logo-hood">Hood</span>
-    <span class="logo-brief">Brief</span>
-  </div>
+  <span class="logo-hood">Hood</span><span class="logo-brief">Brief</span>
   <div class="live-badge"><div class="live-dot"></div>LIVE</div>
   <div id="conn-dot" title="Connection status"></div>
   <div id="clock"></div>
 </div>
 
-<!-- City tabs -->
 <div id="city-tabs">
   <div class="city-tab mem active" data-city="memphis">
     Memphis, TN <span class="tab-n" id="cnt-memphis">0</span>
   </div>
-  <div class="city-tab dc" data-city="dc">
-    Baltimore, MD <span class="tab-n" id="cnt-dc">0</span>
+  <div class="city-tab balt" data-city="baltimore">
+    Baltimore, MD <span class="tab-n" id="cnt-baltimore">0</span>
   </div>
 </div>
 
-<!-- Radius search bar -->
 <div id="radius-bar">
-  <div style="flex:1;display:flex;flex-direction:column;gap:0;min-width:0;">
-    <div style="display:flex;gap:8px;align-items:center;">
-      <input id="addr-input" type="text"
-        placeholder="Enter address for 5-mile radius search…"
-        autocomplete="off" autocorrect="off" spellcheck="false">
+  <div id="addr-wrap">
+    <div id="addr-row">
+      <input id="addr-input" type="text" placeholder="Enter address for 5-mile radius search…" autocomplete="off" autocorrect="off" spellcheck="false">
       <button id="search-btn">Search</button>
       <button id="clear-btn">✕ Clear</button>
     </div>
@@ -688,78 +346,62 @@ const CONFIG = {
   </div>
 </div>
 
-<!-- Filter chips -->
 <div id="filter-bar">
   <div class="chip active" data-f="all">All</div>
-  <div class="chip" data-f="p1">Priority 1</div>
-  <div class="chip" data-f="p2">Priority 2</div>
-  <div class="chip" data-f="p3">Priority 3</div>
-  <div class="chip" data-f="medical">Medical</div>
-  <div class="chip" data-f="fire">Fire</div>
+  <div class="chip" data-f="p1">Priority 1 — Immediate</div>
+  <div class="chip" data-f="p2">Priority 2 — Urgent</div>
+  <div class="chip" data-f="p3">Priority 3 — Non-Urgent</div>
+  <div class="chip" data-f="medical">Medical Emergency</div>
+  <div class="chip" data-f="fire">Fire / Hazmat</div>
 </div>
 
-<!-- Main -->
 <div id="main">
   <div id="feed-panel">
     <div id="feed-header">
       <span>Incidents</span>
-      <span id="feed-count" class="feed-count">—</span>
+      <span id="feed-count">—</span>
     </div>
     <div id="feed-scroll">
       <div class="state-msg"><span class="ico">📡</span>Connecting to live feed…</div>
     </div>
   </div>
-
   <div id="map-panel">
     <div id="map"></div>
     <div id="radius-banner"></div>
     <div id="map-stats">
       <div class="stat-pill">24h total <b id="stat-24h">0</b></div>
-      <div class="stat-pill">Live now <b id="stat-live">0</b></div>
+      <div class="stat-pill">Live now  <b id="stat-live">0</b></div>
     </div>
   </div>
 </div>
 
 <script>
-/* ═══════════════════════════════════════════════
-   SUPABASE CLIENT (pure fetch — no npm needed)
-═══════════════════════════════════════════════ */
+/* ── SUPABASE CLIENT ── */
 const SB = {
-  get url()  { return CONFIG.SUPABASE_URL; },
-  get key()  { return CONFIG.SUPABASE_ANON_KEY; },
   headers() {
     return {
-      "apikey": this.key,
-      "Authorization": `Bearer ${this.key}`,
-      "Content-Type": "application/json",
-      "Prefer": "return=representation"
+      "apikey": CONFIG.SUPABASE_ANON_KEY,
+      "Authorization": `Bearer ${CONFIG.SUPABASE_ANON_KEY}`,
+      "Content-Type": "application/json"
     };
   },
   async query(path) {
-    const r = await fetch(`${this.url}/rest/v1/${path}`, { headers: this.headers() });
+    const r = await fetch(`${CONFIG.SUPABASE_URL}/rest/v1/${path}`, { headers: this.headers() });
     if (!r.ok) throw new Error(`${r.status}: ${r.statusText}`);
     return r.json();
   },
   subscribe(onInsert) {
-    const ws = new WebSocket(
-      `${this.url.replace("https://","wss://").replace("http://","ws://")}/realtime/v1/websocket?apikey=${this.key}&vsn=1.0.0`
-    );
+    const wsUrl = CONFIG.SUPABASE_URL.replace("https://","wss://").replace("http://","ws://");
+    const ws = new WebSocket(`${wsUrl}/realtime/v1/websocket?apikey=${CONFIG.SUPABASE_ANON_KEY}&vsn=1.0.0`);
     ws.onopen = () => {
-      ws.send(JSON.stringify({
-        topic:"realtime:public:incidents",
-        event:"phx_join",
-        payload:{ config:{ broadcast:{self:false}, presence:{key:""} } },
-        ref:"1"
-      }));
+      ws.send(JSON.stringify({ topic:"realtime:public:incidents", event:"phx_join", payload:{ config:{ broadcast:{self:false}, presence:{key:""} } }, ref:"1" }));
       setConn(true);
     };
     ws.onmessage = e => {
       try {
         const m = JSON.parse(e.data);
         const rec = m.payload?.record || m.payload?.data?.record;
-        if (rec && (m.event === "INSERT" || m.payload?.data?.type === "INSERT")) {
-          onInsert(rec);
-        }
+        if (rec && (m.event === "INSERT" || m.payload?.data?.type === "INSERT")) onInsert(rec);
       } catch(_) {}
     };
     ws.onclose = () => { setConn(false); setTimeout(() => SB.subscribe(onInsert), 5000); };
@@ -772,9 +414,7 @@ const SB = {
   }
 };
 
-/* ═══════════════════════════════════════════════
-   STATE
-═══════════════════════════════════════════════ */
+/* ── STATE ── */
 const S = {
   incidents:    [],
   activeCity:   "memphis",
@@ -782,15 +422,13 @@ const S = {
   selectedId:   null,
   markers:      {},
   radiusCircle: null,
-  radiusCenter: null,   // { lat, lng, label }
+  radiusCenter: null,
   radiusMode:   false,
   map:          null,
   userMarker:   null,
 };
 
-/* ═══════════════════════════════════════════════
-   CONSTANTS
-═══════════════════════════════════════════════ */
+/* ── BADGE CONFIG ── */
 const BADGE = {
   p1:      { cls:"badge-p1",      label:"Priority 1 — Immediate Response" },
   p2:      { cls:"badge-p2",      label:"Priority 2 — Urgent"             },
@@ -798,26 +436,20 @@ const BADGE = {
   medical: { cls:"badge-medical", label:"Medical Emergency"               },
   fire:    { cls:"badge-fire",    label:"Fire / Hazmat"                   },
 };
+
 const PIN_COL = { p1:"#ff3d4f", p2:"#f59e0b", p3:"#10d98a", medical:"#3d9eff", fire:"#ff6b1a" };
 
-/* ═══════════════════════════════════════════════
-   DISTANCE CALCULATION (Haversine)
-   Returns miles between two lat/lng points
-═══════════════════════════════════════════════ */
+/* ── HAVERSINE DISTANCE (miles) ── */
 function haversine(lat1, lng1, lat2, lng2) {
-  const R = 3958.8; // Earth radius in miles
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a =
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLng/2) * Math.sin(dLng/2);
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  const R = 3958.8;
+  const dLat = (lat2-lat1)*Math.PI/180;
+  const dLng = (lng2-lng1)*Math.PI/180;
+  const a = Math.sin(dLat/2)*Math.sin(dLat/2) +
+    Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)*Math.sin(dLng/2);
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 
-/* ═══════════════════════════════════════════════
-   GEOCODING (OpenStreetMap Nominatim — free)
-═══════════════════════════════════════════════ */
+/* ── GEOCODING ── */
 async function geocodeAddress(address) {
   const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(address)}`;
   const r = await fetch(url, { headers:{ "Accept-Language":"en", "User-Agent":"HoodBrief/1.0" } });
@@ -826,51 +458,41 @@ async function geocodeAddress(address) {
   return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon), label: data[0].display_name };
 }
 
-/* ═══════════════════════════════════════════════
-   HELPERS
-═══════════════════════════════════════════════ */
+/* ── HELPERS ── */
 function fmtTime(iso) {
   return new Date(iso).toLocaleTimeString("en-US", { hour:"2-digit", minute:"2-digit", hour12:false });
 }
 function fmtAgo(iso) {
-  const d = Math.floor((Date.now() - new Date(iso)) / 60000);
-  if (d < 1)  return "just now";
+  const d = Math.floor((Date.now()-new Date(iso))/60000);
+  if (d < 1) return "just now";
   if (d < 60) return `${d}m ago`;
   const h = Math.floor(d/60), m = d%60;
   return m ? `${h}h ${m}m` : `${h}h`;
 }
-function isNew(iso)    { return (Date.now() - new Date(iso)) < 120000; }
-function isLast24h(iso){ return (Date.now() - new Date(iso)) < 86400000; }
-function fmtDist(mi)   { return mi < 0.1 ? "<0.1 mi" : `${mi.toFixed(1)} mi`; }
+function isNew(iso)     { return (Date.now()-new Date(iso)) < 120000; }
+function isLast24h(iso) { return (Date.now()-new Date(iso)) < 86400000; }
+function fmtDist(mi)    { return mi < 0.1 ? "<0.1 mi" : `${mi.toFixed(1)} mi`; }
 
-/* ═══════════════════════════════════════════════
-   FILTER LOGIC
-═══════════════════════════════════════════════ */
-function getVisibleIncidents() {
-  const now = Date.now();
+/* ── FILTER ── */
+function getVisible() {
   return S.incidents.filter(i => {
-    // In radius mode: show ALL cities, last 24h only, within radius
     if (S.radiusMode) {
       if (!isLast24h(i.created_at)) return false;
       if (!i.lat || !i.lng) return false;
-      const dist = haversine(S.radiusCenter.lat, S.radiusCenter.lng, i.lat, i.lng);
-      if (dist > CONFIG.RADIUS_MILES) return false;
+      if (haversine(S.radiusCenter.lat, S.radiusCenter.lng, i.lat, i.lng) > CONFIG.RADIUS_MILES) return false;
       return S.filter === "all" || i.priority === S.filter;
     }
-    // Normal mode: filter by active city tab
     if (i.city !== S.activeCity) return false;
     return S.filter === "all" || i.priority === S.filter;
   });
 }
 
-function getDistanceToRadius(inc) {
+function getDist(inc) {
   if (!S.radiusMode || !S.radiusCenter || !inc.lat || !inc.lng) return null;
   return haversine(S.radiusCenter.lat, S.radiusCenter.lng, inc.lat, inc.lng);
 }
 
-/* ═══════════════════════════════════════════════
-   MAP INIT
-═══════════════════════════════════════════════ */
+/* ── MAP ── */
 function initMap() {
   const c = CONFIG.CITIES[S.activeCity];
   S.map = L.map("map", { center:c.center, zoom:c.zoom, zoomControl:false, attributionControl:false });
@@ -881,51 +503,47 @@ function initMap() {
 function makeIcon(priority, selected, inRadius) {
   const col = PIN_COL[priority] || "#6b7d96";
   const sz  = selected ? 20 : inRadius ? 16 : 12;
-  const glow = selected ? `box-shadow:0 0 14px ${col}90;` : inRadius ? `box-shadow:0 0 8px ${col}60;` : "";
+  const glow   = selected ? `box-shadow:0 0 14px ${col}90;` : inRadius ? `box-shadow:0 0 8px ${col}60;` : "";
   const border = inRadius ? `border:2px solid var(--gold);` : `border:2px solid rgba(255,255,255,0.55);`;
   return L.divIcon({
-    className: "",
-    html: `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${col};${border}${glow}transition:all 0.2s;"></div>`,
-    iconAnchor: [sz/2, sz/2],
-    iconSize:   [sz, sz],
+    className:"",
+    html:`<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${col};${border}${glow}transition:all 0.2s;"></div>`,
+    iconAnchor:[sz/2,sz/2], iconSize:[sz,sz],
   });
 }
 
-/* User location marker (gold star pin) */
 function makeUserIcon() {
   return L.divIcon({
-    className: "",
-    html: `<div style="width:20px;height:20px;border-radius:50%;background:var(--gold);border:3px solid #fff;box-shadow:0 0 16px rgba(245,200,66,0.8);"></div>`,
-    iconAnchor: [10,10],
-    iconSize:   [20,20],
+    className:"",
+    html:`<div style="width:20px;height:20px;border-radius:50%;background:#f5c842;border:3px solid #fff;box-shadow:0 0 16px rgba(245,200,66,0.8);"></div>`,
+    iconAnchor:[10,10], iconSize:[20,20],
   });
 }
 
 function popupHTML(inc) {
-  const b   = BADGE[inc.priority] || BADGE.p3;
-  const dist = getDistanceToRadius(inc);
+  const b    = BADGE[inc.priority] || BADGE.p3;
+  const dist = getDist(inc);
+  const city = CONFIG.CITIES[inc.city]?.label || inc.city;
   return `
     <div class="p-badge ${b.cls}">${b.label}</div>
     <div class="p-title">${inc.title || "Unknown incident"}</div>
     <div class="p-row">📍 <b>${inc.location || "Location unknown"}</b></div>
     <div class="p-row">🕐 <b>${fmtTime(inc.created_at)} — ${fmtAgo(inc.created_at)}</b></div>
     <div class="p-row">🚔 <b>${inc.unit || "—"}</b></div>
-    <div class="p-row">🏙 <b>${CONFIG.CITIES[inc.city]?.label || inc.city}</b></div>
+    <div class="p-row">🏙 <b>${city}</b></div>
     ${dist !== null ? `<div class="p-dist">📏 ${fmtDist(dist)} from search location</div>` : ""}
     ${inc.transcript ? `<div class="p-tx">"${inc.transcript.slice(0,140)}${inc.transcript.length>140?"…":""}"</div>` : ""}
   `;
 }
 
 function syncMarkers() {
-  const visible    = getVisibleIncidents();
+  const visible    = getVisible();
   const visibleIds = new Set(visible.map(i => i.id));
 
-  // Remove stale markers
   Object.keys(S.markers).forEach(id => {
     if (!visibleIds.has(id)) { S.markers[id].remove(); delete S.markers[id]; }
   });
 
-  // Add / update markers
   visible.forEach(inc => {
     if (!inc.lat || !inc.lng) return;
     const selected = inc.id === S.selectedId;
@@ -946,15 +564,11 @@ function syncMarkers() {
   });
 }
 
-/* ═══════════════════════════════════════════════
-   FEED RENDER
-═══════════════════════════════════════════════ */
+/* ── FEED RENDER ── */
 function renderFeed() {
-  const list    = getVisibleIncidents();
-  const scroll  = document.getElementById("feed-scroll");
-  const countEl = document.getElementById("feed-count");
+  const list   = getVisible();
+  const scroll = document.getElementById("feed-scroll");
 
-  // Sort: in radius mode, sort by distance; else by time
   if (S.radiusMode && S.radiusCenter) {
     list.sort((a,b) => {
       const da = haversine(S.radiusCenter.lat, S.radiusCenter.lng, a.lat||0, a.lng||0);
@@ -963,20 +577,18 @@ function renderFeed() {
     });
   }
 
-  // Stats
   const last24 = S.incidents.filter(i => isLast24h(i.created_at)).length;
-  const liveN  = S.incidents.filter(i => (Date.now() - new Date(i.created_at)) < 3600000).length;
-  document.getElementById("stat-24h").textContent  = last24;
+  const liveN  = S.incidents.filter(i => (Date.now()-new Date(i.created_at)) < 3600000).length;
+  document.getElementById("stat-24h").textContent   = last24;
   document.getElementById("stat-live").textContent  = liveN;
-  document.getElementById("cnt-memphis").textContent = S.incidents.filter(i=>i.city==="memphis").length;
-  document.getElementById("cnt-dc").textContent      = S.incidents.filter(i=>i.city==="dc").length;
+  document.getElementById("cnt-memphis").textContent   = S.incidents.filter(i=>i.city==="memphis").length;
+  document.getElementById("cnt-baltimore").textContent = S.incidents.filter(i=>i.city==="baltimore").length;
 
   const label = S.radiusMode
     ? `${list.length} within ${CONFIG.RADIUS_MILES} mi`
     : `${list.length} incident${list.length!==1?"s":""}`;
-  countEl.textContent = label;
+  document.getElementById("feed-count").textContent = label;
 
-  // Radius banner on map
   const banner = document.getElementById("radius-banner");
   if (S.radiusMode) {
     banner.textContent = `${list.length} incidents within ${CONFIG.RADIUS_MILES} miles — last 24 hours`;
@@ -995,15 +607,17 @@ function renderFeed() {
   }
 
   scroll.innerHTML = list.map(inc => {
-    const b    = BADGE[inc.priority] || BADGE.p3;
-    const sel  = inc.id === S.selectedId ? " selected" : "";
-    const inR  = S.radiusMode ? " in-radius" : "";
-    const dist = getDistanceToRadius(inc);
+    const b   = BADGE[inc.priority] || BADGE.p3;
+    const sel = inc.id === S.selectedId ? " selected" : "";
+    const inR = S.radiusMode ? " in-radius" : "";
+    const dist = getDist(inc);
+    const cityClass = inc.city === "baltimore" ? "baltimore" : "memphis";
+    const cityLabel = inc.city === "baltimore" ? "BALT" : "MEM";
 
     return `<div class="incident${sel}${inR}" data-id="${inc.id}">
       <div class="inc-row1">
         <span class="badge ${b.cls}">${b.label}</span>
-        <span class="city-pill ${inc.city === "dc" ? "dc" : "memphis"}">${inc.city==="dc"?"DC":"MEM"}</span>
+        <span class="city-pill ${cityClass}">${cityLabel}</span>
         ${S.radiusMode ? `<span class="radius-tag">📏 ${dist!==null?fmtDist(dist):""}</span>` : ""}
         ${isNew(inc.created_at) ? `<span class="new-tag">NEW</span>` : ""}
         <span class="inc-time">${fmtTime(inc.created_at)}</span>
@@ -1026,20 +640,17 @@ function renderFeed() {
   syncMarkers();
 }
 
-/* ═══════════════════════════════════════════════
-   SELECT INCIDENT
-═══════════════════════════════════════════════ */
+/* ── SELECT INCIDENT ── */
 function selectIncident(id) {
   S.selectedId = id;
   const inc = S.incidents.find(i => i.id === id);
 
-  // Update all marker icons
   Object.entries(S.markers).forEach(([mid, m]) => {
     const i = S.incidents.find(x => x.id === mid);
     if (i) m.setIcon(makeIcon(i.priority, mid === id, S.radiusMode));
   });
 
-  if (inc?.lat && inc?.lng) {
+  if (inc && inc.lat && inc.lng) {
     S.map.flyTo([inc.lat, inc.lng], 15, { duration:0.75 });
     setTimeout(() => S.markers[id]?.openPopup(), 800);
   }
@@ -1049,61 +660,41 @@ function selectIncident(id) {
     ?.scrollIntoView({ behavior:"smooth", block:"nearest" });
 }
 
-/* ═══════════════════════════════════════════════
-   RADIUS SEARCH
-═══════════════════════════════════════════════ */
+/* ── RADIUS SEARCH ── */
 async function doRadiusSearch() {
-  const addr = document.getElementById("addr-input").value.trim();
+  const addr  = document.getElementById("addr-input").value.trim();
   if (!addr) return;
-
-  const btn      = document.getElementById("search-btn");
-  const errEl    = document.getElementById("geo-error");
-  const statusEl = document.getElementById("radius-status");
-
-  btn.disabled   = true;
+  const btn    = document.getElementById("search-btn");
+  const errEl  = document.getElementById("geo-error");
+  const statEl = document.getElementById("radius-status");
+  btn.disabled = true;
   btn.textContent = "Searching…";
   errEl.classList.remove("visible");
-  statusEl.classList.remove("visible");
-
+  statEl.classList.remove("visible");
   try {
     const geo = await geocodeAddress(addr);
     S.radiusCenter = geo;
     S.radiusMode   = true;
-
-    // Draw radius circle on map
     if (S.radiusCircle) S.radiusCircle.remove();
     S.radiusCircle = L.circle([geo.lat, geo.lng], {
       radius: CONFIG.RADIUS_MILES * 1609.34,
-      color:  "#f5c842",
-      weight: 1.5,
-      opacity: 0.7,
-      fillColor: "#f5c842",
-      fillOpacity: 0.06,
+      color:"#f5c842", weight:1.5, opacity:0.7, fillColor:"#f5c842", fillOpacity:0.06,
     }).addTo(S.map);
-
-    // Place user pin
     if (S.userMarker) S.userMarker.remove();
     S.userMarker = L.marker([geo.lat, geo.lng], { icon:makeUserIcon(), zIndexOffset:1000 })
       .addTo(S.map)
       .bindPopup(`<div class="p-title">Search location</div><div class="p-row">${geo.label.split(",").slice(0,3).join(", ")}</div>`)
       .openPopup();
-
-    // Fit map to circle
     S.map.fitBounds(S.radiusCircle.getBounds(), { padding:[20,20] });
-
-    // Show clear button + status
     document.getElementById("clear-btn").classList.add("visible");
-
-    const count = getVisibleIncidents().length;
-    statusEl.textContent = `Showing ${count} incident${count!==1?"s":""} within ${CONFIG.RADIUS_MILES} miles of "${addr}" — last 24 hours`;
-    statusEl.classList.add("visible");
-
+    const count = getVisible().length;
+    statEl.textContent = `${count} incident${count!==1?"s":""} within ${CONFIG.RADIUS_MILES} miles of "${addr}" — last 24 hours`;
+    statEl.classList.add("visible");
     renderFeed();
-
   } catch(err) {
     errEl.classList.add("visible");
   } finally {
-    btn.disabled    = false;
+    btn.disabled = false;
     btn.textContent = "Search";
   }
 }
@@ -1111,35 +702,25 @@ async function doRadiusSearch() {
 function clearRadiusSearch() {
   S.radiusMode   = false;
   S.radiusCenter = null;
-
   if (S.radiusCircle) { S.radiusCircle.remove(); S.radiusCircle = null; }
   if (S.userMarker)   { S.userMarker.remove();   S.userMarker   = null; }
-
   document.getElementById("addr-input").value = "";
   document.getElementById("clear-btn").classList.remove("visible");
   document.getElementById("radius-status").classList.remove("visible");
   document.getElementById("geo-error").classList.remove("visible");
-
-  // Fly back to active city
   const c = CONFIG.CITIES[S.activeCity];
   S.map.flyTo(c.center, c.zoom, { duration:0.8 });
-
-  // Remove all markers (will be re-added by renderFeed)
   Object.values(S.markers).forEach(m => m.remove());
   S.markers = {};
-
   renderFeed();
 }
 
-/* ═══════════════════════════════════════════════
-   TOAST
-═══════════════════════════════════════════════ */
+/* ── TOAST ── */
 function showToast(inc) {
   const wrap   = document.getElementById("toast-wrap");
-  const isMemp = inc.city === "memphis";
-  const dot    = isMemp ? "var(--memphis)" : "var(--dc)";
-  const city   = isMemp ? "Memphis, TN" : "Baltimore, MD";
-
+  const isMem  = inc.city === "memphis";
+  const dot    = isMem ? "var(--memphis)" : "var(--baltimore)";
+  const city   = isMem ? "Memphis, TN" : "Baltimore, MD";
   const el = document.createElement("div");
   el.className = "toast";
   el.innerHTML = `
@@ -1149,18 +730,13 @@ function showToast(inc) {
       <div class="t-title">${inc.title || "New incident"}</div>
       ${inc.location ? `<div class="t-loc">${inc.location}</div>` : ""}
     </div>`;
-
   el.addEventListener("click", () => {
     if (inc.city !== S.activeCity && !S.radiusMode) switchCity(inc.city);
     setTimeout(() => selectIncident(inc.id), 120);
     dismiss(el);
   });
-
   wrap.prepend(el);
-
-  // Limit to 4 toasts
   while (wrap.children.length > 4) wrap.lastChild.remove();
-
   setTimeout(() => dismiss(el), 7000);
 }
 
@@ -1169,49 +745,37 @@ function dismiss(el) {
   setTimeout(() => el.remove(), 280);
 }
 
-/* ═══════════════════════════════════════════════
-   CITY SWITCHING
-═══════════════════════════════════════════════ */
+/* ── CITY SWITCH ── */
 function switchCity(city) {
-  S.activeCity  = city;
-  S.selectedId  = null;
-
+  S.activeCity = city;
+  S.selectedId = null;
   document.querySelectorAll(".city-tab").forEach(t =>
     t.classList.toggle("active", t.dataset.city === city));
-
   if (!S.radiusMode) {
     const c = CONFIG.CITIES[city];
     S.map.flyTo(c.center, c.zoom, { duration:0.85 });
     Object.values(S.markers).forEach(m => m.remove());
     S.markers = {};
   }
-
   renderFeed();
 }
 
-/* ═══════════════════════════════════════════════
-   CONNECTION INDICATOR
-═══════════════════════════════════════════════ */
+/* ── CONNECTION ── */
 function setConn(ok) {
   const d = document.getElementById("conn-dot");
   d.className = ok ? "ok" : "err";
   d.title     = ok ? "Real-time connected" : "Reconnecting…";
 }
 
-/* ═══════════════════════════════════════════════
-   CLOCK
-═══════════════════════════════════════════════ */
+/* ── CLOCK ── */
 function tickClock() {
   document.getElementById("clock").textContent =
-    new Date().toLocaleTimeString("en-US",
-      { hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false });
+    new Date().toLocaleTimeString("en-US", { hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false });
 }
 setInterval(tickClock, 1000);
 tickClock();
 
-/* ═══════════════════════════════════════════════
-   EVENT LISTENERS
-═══════════════════════════════════════════════ */
+/* ── EVENTS ── */
 document.getElementById("filter-bar").addEventListener("click", e => {
   const chip = e.target.closest(".chip");
   if (!chip) return;
@@ -1232,89 +796,34 @@ document.getElementById("addr-input").addEventListener("keydown", e => {
   if (e.key === "Enter") doRadiusSearch();
 });
 
-/* ═══════════════════════════════════════════════
-   SAMPLE DATA (shown when Supabase not configured)
-═══════════════════════════════════════════════ */
-function loadSampleData() {
-  const ago = m => new Date(Date.now() - m*60000).toISOString();
-  S.incidents = [
-    {id:"s1",  city:"memphis", title:"Armed robbery in progress",   location:"1420 Union Ave, Midtown",            priority:"p1",      unit:"D4, D7",              lat:35.1456,lng:-90.0121,created_at:ago(3)},
-    {id:"s2",  city:"memphis", title:"Vehicle pursuit northbound",  location:"I-240 NB near Poplar Ave",           priority:"p1",      unit:"A2, A9, Air1",        lat:35.1412,lng:-89.9847,created_at:ago(9)},
-    {id:"s3",  city:"memphis", title:"Structure fire, residential", location:"3204 Summer Ave, Highland Heights",  priority:"fire",    unit:"Engine 3, Ladder 6",  lat:35.1583,lng:-89.9641,created_at:ago(20)},
-    {id:"s4",  city:"memphis", title:"Injury accident, multi-veh.", location:"Poplar Ave & Highland St",           priority:"p2",      unit:"C3, Medic 5",         lat:35.1389,lng:-89.9678,created_at:ago(35)},
-    {id:"s5",  city:"memphis", title:"Unconscious person",          location:"Main St & Monroe Ave, Downtown",     priority:"medical", unit:"Medic 2, A5",         lat:35.1495,lng:-90.0503,created_at:ago(56)},
-    {id:"s6",  city:"memphis", title:"Domestic disturbance",        location:"Chelsea Ave & Watkins St",           priority:"p2",      unit:"B6, B8",              lat:35.1621,lng:-90.0214,created_at:ago(78)},
-    {id:"s7",  city:"dc",      title:"Shots fired, multiple callers",location:"Alabama Ave SE & 22nd St",          priority:"p1",      unit:"7D12, 7D14",          lat:38.8622,lng:-76.9784,created_at:ago(4)},
-    {id:"s8",  city:"dc",      title:"Vehicle pursuit, carjacking", location:"South Capitol St & I-295",           priority:"p1",      unit:"1D4, 1D9, Air 101",   lat:38.8556,lng:-77.0003,created_at:ago(12)},
-    {id:"s9",  city:"dc",      title:"Apartment fire",              location:"14th St NW & Irving St",             priority:"fire",    unit:"Engine 2, Truck 4",   lat:38.9289,lng:-77.0322,created_at:ago(29)},
-    {id:"s10", city:"dc",      title:"Stabbing, suspect fled",      location:"H St NE & 8th St",                  priority:"p2",      unit:"3D3, Medic 7",        lat:38.8997,lng:-76.9967,created_at:ago(43)},
-    {id:"s11", city:"dc",      title:"Medical — cardiac emergency", location:"Pennsylvania Ave NW & 15th St",      priority:"medical", unit:"Medic 3, Engine 6",   lat:38.8952,lng:-77.0338,created_at:ago(63)},
-    {id:"s12", city:"dc",      title:"Burglary alarm, commercial",  location:"Wisconsin Ave NW & M St",            priority:"p3",      unit:"2D7",                 lat:38.9048,lng:-77.0630,created_at:ago(91)},
-  ];
-  document.getElementById("boot-overlay").classList.add("gone");
-  renderFeed();
-
-  // Simulate live updates every 25s
-  const DEMO = [
-    {city:"memphis",title:"Traffic stop, warrant suspect",location:"Summer Ave & Graham St",priority:"p1",unit:"C9",lat:35.1598,lng:-89.9901},
-    {city:"dc",     title:"Noise complaint, large crowd", location:"U St NW & 14th St",     priority:"p3",unit:"3D5",lat:38.9172,lng:-77.0324},
-  ];
-  let dIdx = 0;
-  setInterval(() => {
-    const base = DEMO[dIdx++ % DEMO.length];
-    const inc  = {...base, id:`demo_${Date.now()}`, created_at:new Date().toISOString()};
-    S.incidents.unshift(inc);
-    showToast(inc);
-    if (inc.city === S.activeCity || S.radiusMode) renderFeed();
-    document.getElementById("cnt-memphis").textContent = S.incidents.filter(i=>i.city==="memphis").length;
-    document.getElementById("cnt-dc").textContent      = S.incidents.filter(i=>i.city==="dc").length;
-  }, 25000);
-}
-
-/* ═══════════════════════════════════════════════
-   BOOT
-═══════════════════════════════════════════════ */
+/* ── BOOT ── */
 async function boot() {
   initMap();
-
-  const unconfigured =
-    CONFIG.SUPABASE_URL.includes("YOUR_") ||
-    CONFIG.SUPABASE_ANON_KEY.includes("YOUR_");
-
+  const unconfigured = CONFIG.SUPABASE_URL.includes("YOUR_") || CONFIG.SUPABASE_ANON_KEY.includes("YOUR_");
   if (unconfigured) {
-    document.getElementById("boot-msg").textContent = "Loading preview data…";
-    setTimeout(loadSampleData, 800);
+    document.getElementById("boot-msg").textContent = "Add Supabase credentials to CONFIG";
     return;
   }
-
-  document.getElementById("boot-msg").textContent = "Connecting to database…";
+  document.getElementById("boot-msg").textContent = "Loading incidents…";
   try {
-    const rows = await SB.query(
-      `incidents?order=created_at.desc&limit=${CONFIG.INITIAL_LOAD}`
-    );
+    const rows = await SB.query(`incidents?order=created_at.desc&limit=${CONFIG.INITIAL_LOAD}`);
     S.incidents = rows;
     document.getElementById("boot-overlay").classList.add("gone");
     renderFeed();
-
-    // Real-time subscription
     SB.subscribe(newRow => {
       S.incidents.unshift(newRow);
-      if (S.incidents.length > 600) S.incidents = S.incidents.slice(0, 600);
+      if (S.incidents.length > 600) S.incidents = S.incidents.slice(0,600);
       showToast(newRow);
       if (newRow.city === S.activeCity || S.radiusMode) renderFeed();
       else {
-        document.getElementById("cnt-memphis").textContent = S.incidents.filter(i=>i.city==="memphis").length;
-        document.getElementById("cnt-dc").textContent      = S.incidents.filter(i=>i.city==="dc").length;
+        document.getElementById("cnt-memphis").textContent   = S.incidents.filter(i=>i.city==="memphis").length;
+        document.getElementById("cnt-baltimore").textContent = S.incidents.filter(i=>i.city==="baltimore").length;
       }
     });
-
   } catch(err) {
     document.getElementById("boot-msg").innerHTML =
-      `<span style="color:var(--red)">Connection failed: ${err.message}</span><br>
-       <small style="color:var(--text2);margin-top:8px;display:block">
-       Check your Supabase URL and anon key in the CONFIG block</small>`;
+      `<span style="color:var(--red)">Connection failed: ${err.message}</span>`;
     document.querySelector(".spinner").style.display = "none";
-    setTimeout(loadSampleData, 2000);
   }
 }
 
