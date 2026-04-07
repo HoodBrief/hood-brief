@@ -747,14 +747,14 @@ function dismiss(el) {
 
 /* ── CITY SWITCH ── */
 function switchCity(city) {
-     console.log("switchCity called with:", city, "CONFIG.CITIES:", JSON.stringify(Object.keys(CONFIG.CITIES)));
-     S.activeCity = city;
+  console.log("switchCity called with:", city, Object.keys(CONFIG.CITIES));
   S.activeCity = city;
   S.selectedId = null;
   document.querySelectorAll(".city-tab").forEach(t =>
     t.classList.toggle("active", t.dataset.city === city));
   if (!S.radiusMode) {
     const c = CONFIG.CITIES[city];
+    if (!c) { console.error("City not found:", city); return; }
     S.map.flyTo(c.center, c.zoom, { duration:0.85 });
     Object.values(S.markers).forEach(m => m.remove());
     S.markers = {};
