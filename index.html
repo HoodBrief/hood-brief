@@ -747,6 +747,8 @@ function dismiss(el) {
 
 /* ── CITY SWITCH ── */
 function switchCity(city) {
+     console.log("switchCity called with:", city, "CONFIG.CITIES:", JSON.stringify(Object.keys(CONFIG.CITIES)));
+     S.activeCity = city;
   S.activeCity = city;
   S.selectedId = null;
   document.querySelectorAll(".city-tab").forEach(t =>
