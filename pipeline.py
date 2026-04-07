@@ -347,20 +347,53 @@ def geocode_location(location_text, city):
     if not location_text:
         return CITIES[city]["center"]
     city_info  = CITIES[city]
-    full_query = f"{location_text}, {city_info['label']}"
-    try:
-        url     = "https://nominatim.openstreetmap.org/search"
-        params  = { "q": full_query, "format": "json", "limit": 1 }
-        headers = { "User-Agent": "HoodBrief/1.0" }
-        r       = requests.get(url, params=params, headers=headers, timeout=5)
-        results = r.json()
-        if results:
-            lat = float(results[0]["lat"])
-            lng = float(results[0]["lon"])
-            print(f"  Geocoded: {location_text} -> {lat}, {lng}")
-            return lat, lng
-    except Exception as e:
-        print(f"  Geocoding failed: {e}")
+    city_label = city_info["label"]
+
+    # Try with full city name first
+    queries = [
+        f"{location_text}, {city_label}",
+        f"{location_text}, {city_label.split(',')[0]}",
+        location_text,
+    ]
+
+    for query in queries:
+        try:
+            # Nominatim requires a delay between requests
+            time.sleep(1)
+            url     = "https://nominatim.openstreetmap.org/search"
+            params  = {
+                "q":              query,
+                "format":         "json",
+                "limit":          1,
+                "addressdetails": 1,
+            }
+            headers = {
+                "User-Agent":    "HoodBrief/1.0 (hoodbrief@proton.me)",
+                "Accept":        "application/json",
+                "Referer":       "https://hoodbrief.netlify.app",
+            }
+            r = requests.get(url, params=params, headers=headers, timeout=10)
+            if r.status_code != 200:
+                print(f"  Nominatim returned {r.status_code} for: {query}")
+                continue
+            results = r.json()
+            if results:
+                lat = float(results[0]["lat"])
+                lng = float(results[0]["lon"])
+                # Sanity check — make sure coordinates are near the city
+                center_lat, center_lng = city_info["center"]
+                dist_from_center = abs(lat - center_lat) + abs(lng - center_lng)
+                if dist_from_center > 2.0:
+                    print(f"  Geocode result too far from city, skipping: {lat}, {lng}")
+                    continue
+                print(f"  Geocoded: {location_text} -> {lat}, {lng}")
+                return lat, lng
+            else:
+                print(f"  No results for: {query}")
+        except Exception as e:
+            print(f"  Geocoding error: {e}")
+
+    print(f"  Falling back to city center for: {location_text}")
     return CITIES[city]["center"]
 
 
