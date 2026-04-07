@@ -434,7 +434,51 @@ lat {center_lat}, lng {center_lng}."""
 # ══════════════════════════════════════════════════════════════════
 #  SUPABASE WRITER
 # ══════════════════════════════════════════════════════════════════
-
+def geocode_location(location_text, city):
+    """Convert a street address to lat/lng using OpenStreetMap Nominatim."""
+    if not location_text:
+        return None, None
+    city_info = CITIES[city]
+    # Add city name to help narrow down the search
+    full_query = f"{location_text}, {city_info['label']}"
+    try:
+        url = "https://nominatim.openstreetmap.org/search"
+        params = {
+            "q": full_query,
+            "format": "json",
+            "limit": 1,
+        }
+        headers = { "User-Agent": "HoodBrief/1.0" }
+        r = requests.get(url, params=params, headers=headers, timeout=5)
+        results = r.json()
+        if results:
+            lat = float(results[0]["lat"])
+            lng = float(results[0]["lon"])
+            print(f"  Geocoded: {location_text} → {lat}, {lng}")
+            return lat, lng
+    except Exception as e:
+        print(f"  Geocoding failed: {e}")
+    # Fall back to city center if geocoding fails
+    return city_info["center"]
+  def geocode_location(location_text, city):
+    if not location_text:
+        return CITIES[city]["center"]
+    city_info = CITIES[city]
+    full_query = f"{location_text}, {city_info['label']}"
+    try:
+        url = "https://nominatim.openstreetmap.org/search"
+        params = { "q": full_query, "format": "json", "limit": 1 }
+        headers = { "User-Agent": "HoodBrief/1.0" }
+        r = requests.get(url, params=params, headers=headers, timeout=5)
+        results = r.json()
+        if results:
+            lat = float(results[0]["lat"])
+            lng = float(results[0]["lon"])
+            print(f"  Geocoded: {location_text} → {lat}, {lng}")
+            return lat, lng
+    except Exception as e:
+        print(f"  Geocoding failed: {e}")
+    return CITIES[city]["center"]
 def save_incident(incident: dict, city: str, transcript_original: str, transcript_translated: str):
     """
     Writes a parsed incident row to the Supabase `incidents` table.
@@ -528,7 +572,13 @@ def run_city(city: str):
                 print(f"[{label}] No incident detected — skipping")
                 continue
 
-            # ── Step 5: Save to Supabase ───────────────────────
+           # ── Step 5: Geocode the location ───────────────────
+            location = parsed.get("location")
+            lat, lng = geocode_location(location, city)
+            parsed["lat"] = lat
+            parsed["lng"] = lng
+
+            # ── Step 6: Save to Supabase ───────────────────────
             save_incident(parsed, city, transcript_raw, transcript_translated)
             print(
                 f"[{label}] ✓ Saved: [{parsed.get('priority','?').upper()}] "
