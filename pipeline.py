@@ -1,7 +1,7 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
 ║  HOOD BRIEF — Scanner Pipeline                                   ║
-║  Memphis, TN  +  Washington, DC                                  ║
+║  Memphis, TN  +  Baltimore, MD                                   ║
 ║                                                                  ║
 ║  SETUP — paste your values in the CONFIG block below             ║
 ║  then commit this file to your GitHub repo.                      ║
@@ -41,11 +41,11 @@ CITIES = {
         "stream_url": os.environ.get("MEMPHIS_STREAM_URL", "YOUR_MEMPHIS_BROADCASTIFY_URL_HERE"),
         "center":     (35.1495, -90.0490),
     },
-    "dc": {
-        "label":      "Washington, DC",
-        "stream_url": os.environ.get("DC_STREAM_URL", "YOUR_DC_BROADCASTIFY_URL_HERE"),
-        "center":     (38.9072, -77.0369),
-    },
+"baltimore": {
+    "label":      "Baltimore, MD",
+    "stream_url": os.environ.get("BALTIMORE_STREAM_URL", "YOUR_BALTIMORE_BROADCASTIFY_URL_HERE"),
+    "center":     (39.2904, -76.6122),
+},
 }
 
 CHUNK_SECONDS = 30   # how many seconds of audio to capture per chunk
