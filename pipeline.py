@@ -1,6 +1,7 @@
 """
 Hood Brief — Scanner Pipeline
 Memphis, TN + Baltimore, MD
+Includes: 10-code translation, geocoding, gang hotspot detection
 """
 
 import os
@@ -36,6 +37,134 @@ CHUNK_SECONDS = 30
 MAX_RETRIES   = 3
 
 client = OpenAI(api_key=OPENAI_API_KEY)
+
+# ══════════════════════════════════════════════════════════════════
+#  GANG HOTSPOT ZONES
+#
+#  Each entry is a zone name paired with a list of keywords.
+#  If ANY keyword is found in the incident location, the incident
+#  is tagged with that zone name and gang_hotspot = true.
+#  Keywords are matched case-insensitively.
+# ══════════════════════════════════════════════════════════════════
+
+GANG_ZONES = {
+    "memphis": [
+        {
+            "zone": "Tate & Boyd Area — AOB Gang Hub",
+            "keywords": ["tate", "boyd", "all off the blade", "aob"],
+        },
+        {
+            "zone": "Orange Mound — High Gang Activity",
+            "keywords": ["orange mound", "mound"],
+        },
+        {
+            "zone": "South Memphis — High Gang Activity",
+            "keywords": ["south memphis", "s memphis", "mississippi river", "e mclemore",
+                         "w mclemore", "horn lake", "elvis presley blvd", "south third"],
+        },
+        {
+            "zone": "Frayser — High Gang Activity",
+            "keywords": ["frayser", "watkins", "north watkins", "n watkins",
+                         "vollintine", "harvell", "overton crossing"],
+        },
+        {
+            "zone": "Hickory Hill — High Gang Activity",
+            "keywords": ["hickory hill", "hickory ridge", "knight arnold",
+                         "shelby dr", "shelby drive", "lamar"],
+        },
+        {
+            "zone": "Third Street Corridor — Gang Activity",
+            "keywords": ["third street", "3rd street", "parkway village",
+                         "n third", "n 3rd"],
+        },
+    ],
+    "baltimore": [
+        {
+            "zone": "Sandtown-Winchester — High Gang Activity",
+            "keywords": ["sandtown", "winchester", "north ave", "north avenue",
+                         "baker street", "stricker", "gilmor"],
+        },
+        {
+            "zone": "Cherry Hill — High Gang Activity",
+            "keywords": ["cherry hill", "cherry hill rd", "cherry hill road",
+                         "seabury", "benson", "round road"],
+        },
+        {
+            "zone": "Greenmount East — High Gang Activity",
+            "keywords": ["greenmount", "broadway east", "federal st", "federal street",
+                         "chase street", "hoffman street", "aisquith"],
+        },
+        {
+            "zone": "Broadway East — High Gang Activity",
+            "keywords": ["broadway east", "broadway", "lafayette", "biddle",
+                         "eager street", "mcelderry"],
+        },
+        {
+            "zone": "Upton & Druid Heights — High Gang Activity",
+            "keywords": ["upton", "druid heights", "druid hill", "madison ave",
+                         "madison avenue", "mcculloh", "dolphin street"],
+        },
+        {
+            "zone": "Southwest Baltimore — Operation Tornado Alley",
+            "keywords": ["pratt street", "lemon street", "millington",
+                         "edmondson", "sw baltimore", "southwest baltimore"],
+        },
+        {
+            "zone": "Inner Harbor — Law Enforcement Focus Area",
+            "keywords": ["inner harbor", "harbor", "pratt st", "light street",
+                         "light st", "calvert street"],
+        },
+        {
+            "zone": "Fells Point — Law Enforcement Focus Area",
+            "keywords": ["fells point", "fell's point", "thames street",
+                         "broadway pier", "upper fells"],
+        },
+        {
+            "zone": "Canton Square — Law Enforcement Focus Area",
+            "keywords": ["canton", "canton square", "o'donnell", "odonnell",
+                         "boston street"],
+        },
+        {
+            "zone": "Federal Hill — Law Enforcement Focus Area",
+            "keywords": ["federal hill", "cross street", "light st", "covington",
+                         "warren avenue"],
+        },
+        {
+            "zone": "Patterson Park / Highlandtown — MS-13 Activity",
+            "keywords": ["patterson park", "highlandtown", "eastern ave",
+                         "eastern avenue", "conkling", "linwood"],
+        },
+    ],
+}
+
+
+# ══════════════════════════════════════════════════════════════════
+#  GANG HOTSPOT DETECTOR
+# ══════════════════════════════════════════════════════════════════
+
+def check_gang_hotspot(location, title, city):
+    """
+    Checks whether an incident location matches any known gang
+    hotspot zone for the given city.
+
+    Searches both the location string and the incident title
+    to maximise detection accuracy.
+
+    Returns (is_hotspot: bool, zone_name: str or None)
+    """
+    if not location:
+        return False, None
+
+    zones = GANG_ZONES.get(city, [])
+    search_text = f"{location} {title or ''}".lower()
+
+    for zone in zones:
+        for keyword in zone["keywords"]:
+            if keyword.lower() in search_text:
+                return True, zone["zone"]
+
+    return False, None
+
 
 # ══════════════════════════════════════════════════════════════════
 #  10-CODE DICTIONARIES
@@ -217,17 +346,13 @@ def translate_ten_codes(transcript, city):
 def geocode_location(location_text, city):
     if not location_text:
         return CITIES[city]["center"]
-    city_info = CITIES[city]
+    city_info  = CITIES[city]
     full_query = f"{location_text}, {city_info['label']}"
     try:
-        url = "https://nominatim.openstreetmap.org/search"
-        params = {
-            "q": full_query,
-            "format": "json",
-            "limit": 1,
-        }
-        headers = {"User-Agent": "HoodBrief/1.0"}
-        r = requests.get(url, params=params, headers=headers, timeout=5)
+        url     = "https://nominatim.openstreetmap.org/search"
+        params  = { "q": full_query, "format": "json", "limit": 1 }
+        headers = { "User-Agent": "HoodBrief/1.0" }
+        r       = requests.get(url, params=params, headers=headers, timeout=5)
         results = r.json()
         if results:
             lat = float(results[0]["lat"])
@@ -287,8 +412,8 @@ def transcribe(audio_bytes):
 # ══════════════════════════════════════════════════════════════════
 
 def parse_incident(transcript_translated, city):
-    city_info  = CITIES[city]
-    city_label = city_info["label"]
+    city_info          = CITIES[city]
+    city_label         = city_info["label"]
     center_lat, center_lng = city_info["center"]
 
     system_prompt = f"""You are a police incident parser for {city_label}.
@@ -336,7 +461,7 @@ For lat/lng use city center as fallback: {center_lat}, {center_lng}"""
 #  SUPABASE WRITER
 # ══════════════════════════════════════════════════════════════════
 
-def save_incident(incident, city, transcript_original, transcript_translated):
+def save_incident(incident, city, transcript_original, transcript_translated, gang_hotspot, gang_zone):
     headers = {
         "apikey":        SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -353,6 +478,8 @@ def save_incident(incident, city, transcript_original, transcript_translated):
         "priority":       incident.get("priority"),
         "transcript":     transcript_translated,
         "transcript_raw": transcript_original,
+        "gang_hotspot":   gang_hotspot,
+        "gang_zone":      gang_zone,
     }
     r = requests.post(
         f"{SUPABASE_URL}/rest/v1/incidents",
@@ -408,12 +535,24 @@ def run_city(city):
             parsed["lat"] = lat
             parsed["lng"] = lng
 
-            # Step 6: Save to Supabase
-            save_incident(parsed, city, transcript_raw, transcript_translated)
+            # Step 6: Check gang hotspot
+            gang_hotspot, gang_zone = check_gang_hotspot(
+                location, parsed.get("title"), city
+            )
+            if gang_hotspot:
+                print(f"  ⚠ Gang hotspot detected: {gang_zone}")
+
+            # Step 7: Save to Supabase
+            save_incident(
+                parsed, city,
+                transcript_raw, transcript_translated,
+                gang_hotspot, gang_zone
+            )
+            hotspot_tag = f" ⚠ {gang_zone}" if gang_hotspot else ""
             print(
                 f"[{label}] Saved: [{parsed.get('priority','?').upper()}] "
-                f"{parsed.get('title','?')} @ {parsed.get('location','?')} "
-                f"({lat:.4f}, {lng:.4f})"
+                f"{parsed.get('title','?')} @ {parsed.get('location','?')}"
+                f"{hotspot_tag}"
             )
 
         except requests.exceptions.ConnectionError:
