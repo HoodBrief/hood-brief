@@ -738,6 +738,12 @@ def run_city(city):
                 print(f"[{label}] No incident detected - skipping")
                 continue
 
+            # Only save P1 and P2 incidents — skip P3, medical, and fire
+            priority = parsed.get("priority", "")
+            if priority not in ("p1", "p2"):
+                print(f"[{label}] Skipping {priority.upper()} incident - below threshold")
+                continue
+
             # Step 5: Geocode the location
             location = parsed.get("location")
             lat, lng = geocode_location(location, city)
