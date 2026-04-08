@@ -1,7 +1,8 @@
 """
 Hood Brief — Scanner Pipeline
-Memphis, TN only
-Includes: 10-code translation, geocoding, gang hotspot detection
+Memphis, TN
+Includes: 10-code translation, Geocodio + Nominatim geocoding,
+          intersection handling, gang hotspot detection
 P1 and P2 incidents only
 """
 
@@ -293,89 +294,77 @@ def geocode_location(location_text, city):
     if not location_text:
         return CITIES[city]["center"]
 
-    # Clean up cross street from numbered address
-    # e.g. "2704 Perkins Rd and American Way" -> "2704 Perkins Rd"
+    city_info  = CITIES[city]
+    city_label = city_info["label"]
+
+    # Build a list of location queries to try in order.
+    # For "2704 Perkins Rd and American Way":
+    #   1. Try the full intersection: "Perkins Rd and American Way"
+    #   2. Try the numbered address: "2704 Perkins Rd"
+    #   3. Try just the first street: "Perkins Rd"
+    # For plain addresses like "809 Alida Ave" just try as-is.
+    location_queries = [location_text]
+
     cross_match = re.match(
-        r'^(\d+\s+[^,]+?)\s+and\s+.+$',
+        r'^(\d+\s+)([^,]+?)\s+and\s+(.+)$',
         location_text.strip(),
         re.IGNORECASE
     )
     if cross_match:
-        cleaned = cross_match.group(1).strip()
-        print(f"  Cleaned location: '{location_text}' -> '{cleaned}'")
-        location_text = cleaned
+        number       = cross_match.group(1).strip()
+        street1      = cross_match.group(2).strip()
+        street2      = cross_match.group(3).strip()
+        intersection = f"{street1} and {street2}"
+        numbered     = f"{number} {street1}"
+        location_queries = [
+            intersection,
+            numbered,
+            street1,
+        ]
+        print(f"  Intersection detected — trying: {location_queries}")
 
-    city_info  = CITIES[city]
-    city_label = city_info["label"]
-    google_key = os.environ.get("GOOGLE_MAPS_KEY", "")
-
-    # Step 1: Google Places API — finds named locations like
-    # apartment complexes, schools, parks, businesses
-    if google_key:
-        try:
-            r = requests.get(
-                "https://maps.googleapis.com/maps/api/place/findplacefromtext/json",
-                params={
-                    "input":        f"{location_text}, {city_label}",
-                    "inputtype":    "textquery",
-                    "fields":       "geometry,name,formatted_address",
-                    "locationbias": f"circle:30000@{city_info['center'][0]},{city_info['center'][1]}",
-                    "key":          google_key,
-                },
-                timeout=10,
-            )
-            data = r.json()
-            if data.get("status") == "OK" and data.get("candidates"):
-                loc = data["candidates"][0]["geometry"]["location"]
-                lat, lng = float(loc["lat"]), float(loc["lng"])
-                center_lat, center_lng = city_info["center"]
-                if abs(lat - center_lat) + abs(lng - center_lng) < 2.0:
-                    print(f"  Geocoded (Places): {location_text} -> {lat}, {lng}")
-                    return lat, lng
-            else:
-                print(f"  Places API: {data.get('status')} for: {location_text}")
-        except Exception as e:
-            print(f"  Places API error: {e}")
-
-    # Step 2: Google Geocoding API — finds street addresses
-    if google_key:
-        try:
-            r = requests.get(
-                "https://maps.googleapis.com/maps/api/geocode/json",
-                params={
-                    "address": f"{location_text}, {city_label}",
-                    "key":     google_key,
-                },
-                timeout=10,
-            )
-            data = r.json()
-            if data.get("status") == "OK":
-                loc = data["results"][0]["geometry"]["location"]
-                lat, lng = float(loc["lat"]), float(loc["lng"])
-                center_lat, center_lng = city_info["center"]
-                if abs(lat - center_lat) + abs(lng - center_lng) < 2.0:
-                    print(f"  Geocoded (Google): {location_text} -> {lat}, {lng}")
-                    return lat, lng
+    # Step 1: Geocodio — excellent US address coverage,
+    # 2,500 free requests/day, no credit card required
+    geocodio_key = os.environ.get("GEOCODIO_KEY", "")
+    if geocodio_key:
+        for query in location_queries:
+            try:
+                r = requests.get(
+                    "https://api.geocod.io/v1.7/geocode",
+                    params={
+                        "q":       f"{query}, {city_label}",
+                        "api_key": geocodio_key,
+                        "limit":   1,
+                    },
+                    timeout=10,
+                )
+                data    = r.json()
+                results = data.get("results", [])
+                if results:
+                    loc = results[0]["location"]
+                    lat, lng = float(loc["lat"]), float(loc["lng"])
+                    center_lat, center_lng = city_info["center"]
+                    if abs(lat - center_lat) + abs(lng - center_lng) < 2.0:
+                        print(f"  Geocoded (Geocodio): {query} -> {lat}, {lng}")
+                        return lat, lng
+                    else:
+                        print(f"  Geocodio result too far from city: {lat}, {lng}")
                 else:
-                    print(f"  Google result too far from city: {lat}, {lng}")
-            else:
-                print(f"  Google geocode: {data.get('status')} for: {location_text}")
-        except Exception as e:
-            print(f"  Google geocoding error: {e}")
+                    print(f"  Geocodio: no results for: {query}")
+            except Exception as e:
+                print(f"  Geocodio error: {e}")
 
-    # Step 3: Nominatim fallback
-    queries = [f"{location_text}, {city_label}"]
-    if " and " in location_text.lower():
-        first_street = location_text.split(" and ")[0].strip()
-        queries.append(f"{first_street}, {city_label}")
-        queries.append(f"{first_street}, {city_label.split(',')[0]}")
-
-    for query in queries:
+    # Step 2: Nominatim fallback — free, no key needed
+    for query in location_queries:
         try:
             time.sleep(1)
             r = requests.get(
                 "https://nominatim.openstreetmap.org/search",
-                params={ "q": query, "format": "json", "limit": 1 },
+                params={
+                    "q":      f"{query}, {city_label}",
+                    "format": "json",
+                    "limit":  1,
+                },
                 headers={
                     "User-Agent": "HoodBrief/1.0 (hoodbrief@proton.me)",
                     "Accept":     "application/json",
@@ -387,8 +376,12 @@ def geocode_location(location_text, city):
                 lat, lng = float(results[0]["lat"]), float(results[0]["lon"])
                 center_lat, center_lng = city_info["center"]
                 if abs(lat - center_lat) + abs(lng - center_lng) < 2.0:
-                    print(f"  Geocoded (Nominatim): {location_text} -> {lat}, {lng}")
+                    print(f"  Geocoded (Nominatim): {query} -> {lat}, {lng}")
                     return lat, lng
+                else:
+                    print(f"  Nominatim result too far from city: {lat}, {lng}")
+            else:
+                print(f"  Nominatim: no results for: {query}")
         except Exception as e:
             print(f"  Nominatim error: {e}")
 
@@ -445,8 +438,8 @@ def transcribe(audio_bytes):
 # ══════════════════════════════════════════════════════════════════
 
 def parse_incident(transcript_translated, city):
-    city_info          = CITIES[city]
-    city_label         = city_info["label"]
+    city_info              = CITIES[city]
+    city_label             = city_info["label"]
     center_lat, center_lng = city_info["center"]
 
     system_prompt = f"""You are a police incident parser for {city_label}.
