@@ -981,6 +981,8 @@ async function pollForUpdates() {
     console.log("[Poll] Error:", err.message);
   }
 }
+setInterval(pollForUpdates, 30000);
+setTimeout(pollForUpdates, 5000);
 boot();
 </script>
 </body>
