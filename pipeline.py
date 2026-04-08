@@ -297,19 +297,25 @@ def geocode_location(location_text, city):
     city_info  = CITIES[city]
     city_label = city_info["label"]
 
-    # Build a list of location queries to try in order.
-    # For "2704 Perkins Rd and American Way":
-    #   1. Try the full intersection: "Perkins Rd and American Way"
-    #   2. Try the numbered address: "2704 Perkins Rd"
-    #   3. Try just the first street: "Perkins Rd"
-    # For plain addresses like "809 Alida Ave" just try as-is.
+  # Build a list of location queries to try in order
     location_queries = [location_text]
 
+    # Pattern 1: Numbered address with cross street
+    # e.g. "2704 Perkins Rd and American Way"
     cross_match = re.match(
         r'^(\d+\s+)([^,]+?)\s+and\s+(.+)$',
         location_text.strip(),
         re.IGNORECASE
     )
+
+    # Pattern 2: Pure intersection with no street number
+    # e.g. "Summer and Stratford" or "Summer Ave and Stratford"
+    intersection_match = re.match(
+        r'^([^,\d][^,]+?)\s+and\s+([^,]+)$',
+        location_text.strip(),
+        re.IGNORECASE
+    ) if not cross_match else None
+
     if cross_match:
         number       = cross_match.group(1).strip()
         street1      = cross_match.group(2).strip()
@@ -321,7 +327,17 @@ def geocode_location(location_text, city):
             numbered,
             street1,
         ]
-        print(f"  Intersection detected — trying: {location_queries}")
+        print(f"  Numbered intersection detected — trying: {location_queries}")
+
+    elif intersection_match:
+        street1 = intersection_match.group(1).strip()
+        street2 = intersection_match.group(2).strip()
+        location_queries = [
+            f"{street1} and {street2}",
+            street1,
+            street2,
+        ]
+        print(f"  Pure intersection detected — trying: {location_queries}")
 
     # Step 1: Geocodio — excellent US address coverage,
     # 2,500 free requests/day, no credit card required
