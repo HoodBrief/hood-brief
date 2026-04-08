@@ -41,14 +41,10 @@
   --blue:       #3d9eff;
   --blue-dim:   rgba(61,158,255,0.10);
   --blue-bdr:   rgba(61,158,255,0.22);
-  --fire:       #ff6b1a;
-  --fire-dim:   rgba(255,107,26,0.12);
-  --fire-bdr:   rgba(255,107,26,0.28);
   --gang:       #ff6b1a;
   --gang-dim:   rgba(255,107,26,0.12);
   --gang-bdr:   rgba(255,107,26,0.30);
   --memphis:    #ff3d4f;
-  --baltimore:  #3d9eff;
   --font:       'Space Grotesk', sans-serif;
   --mono:       'Space Mono', monospace;
 }
@@ -91,6 +87,15 @@ html, body {
 }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
 
+.city-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--memphis);
+  text-transform: uppercase;
+}
+
 #clock {
   margin-left: auto; font-family: var(--mono); font-size: 12px;
   color: var(--text3); font-variant-numeric: tabular-nums;
@@ -101,26 +106,6 @@ html, body {
 }
 #conn-dot.ok  { background: var(--green); box-shadow: 0 0 5px var(--green); }
 #conn-dot.err { background: var(--red); }
-
-/* ── CITY TABS ── */
-#city-tabs {
-  display: flex; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0;
-}
-.city-tab {
-  flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
-  padding: 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.5px;
-  color: var(--text3); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.18s;
-}
-.city-tab:first-child { border-right: 1px solid var(--border); }
-.city-tab.active { color: var(--text); }
-.city-tab.active.mem  { border-bottom-color: var(--memphis); }
-.city-tab.active.balt { border-bottom-color: var(--baltimore); }
-.tab-n {
-  font-family: var(--mono); font-size: 10px; padding: 1px 6px;
-  border-radius: 2px; font-variant-numeric: tabular-nums;
-}
-.city-tab.mem  .tab-n { background: var(--red-dim);  color: var(--red); }
-.city-tab.balt .tab-n { background: var(--blue-dim); color: var(--blue); }
 
 /* ── RADIUS SEARCH BAR ── */
 #radius-bar {
@@ -175,23 +160,20 @@ html, body {
 }
 .chip:active { transform: scale(0.96); }
 .chip.active { border-color: transparent; color: var(--bg); }
-.chip[data-f="all"].active      { background: var(--gold); }
-.chip[data-f="p1"].active       { background: var(--red); }
-.chip[data-f="p2"].active       { background: var(--amber); }
-.chip[data-f="p3"].active       { background: var(--green); }
-.chip[data-f="medical"].active  { background: var(--blue); }
-.chip[data-f="fire"].active     { background: var(--fire); }
-.chip[data-f="gang"].active     { background: var(--gang); }
+.chip[data-f="all"].active  { background: var(--gold); }
+.chip[data-f="p1"].active   { background: var(--red); }
+.chip[data-f="p2"].active   { background: var(--amber); }
+.chip[data-f="gang"].active { background: var(--gang); }
 
 /* ── MAIN LAYOUT ── */
 #main { display: flex; overflow: hidden; }
 @media (min-width: 720px) {
-  #main { flex-direction: row; height: calc(100dvh - 50px - 36px - 52px - 38px); }
+  #main { flex-direction: row; height: calc(100dvh - 50px - 52px - 38px); }
   #feed-panel { width: 370px; min-width: 370px; border-right: 1px solid var(--border); }
   #map-panel  { flex: 1; }
 }
 @media (max-width: 719px) {
-  #main { flex-direction: column; height: calc(100dvh - 50px - 36px - 68px - 38px); }
+  #main { flex-direction: column; height: calc(100dvh - 50px - 68px - 38px); }
   #feed-panel { height: 48%; border-bottom: 1px solid var(--border); }
   #map-panel  { flex: 1; min-height: 0; }
 }
@@ -232,23 +214,12 @@ html, body {
 
 .inc-row1 { display: flex; align-items: center; gap: 5px; margin-bottom: 5px; flex-wrap: wrap; }
 
-/* ── BADGES ── */
 .badge {
   font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: 1px;
   text-transform: uppercase; padding: 2px 6px; border-radius: 2px; flex-shrink: 0;
 }
-.badge-p1      { background:var(--red-dim);   color:var(--red);   border:1px solid var(--red-bdr); }
-.badge-p2      { background:var(--amber-dim); color:var(--amber); border:1px solid var(--amber-bdr); }
-.badge-p3      { background:var(--green-dim); color:var(--green); border:1px solid var(--green-bdr); }
-.badge-medical { background:var(--blue-dim);  color:var(--blue);  border:1px solid var(--blue-bdr); }
-.badge-fire    { background:var(--fire-dim);  color:var(--fire);  border:1px solid var(--fire-bdr); }
-
-.city-pill {
-  font-family:var(--mono); font-size:9px; font-weight:700;
-  letter-spacing:0.8px; padding:2px 6px; border-radius:2px;
-}
-.city-pill.memphis   { background:var(--red-dim);  color:var(--red); }
-.city-pill.baltimore { background:var(--blue-dim); color:var(--blue); }
+.badge-p1 { background:var(--red-dim);   color:var(--red);   border:1px solid var(--red-bdr); }
+.badge-p2 { background:var(--amber-dim); color:var(--amber); border:1px solid var(--amber-bdr); }
 
 .gang-tag {
   font-family:var(--mono); font-size:9px; font-weight:700;
@@ -306,7 +277,6 @@ html, body {
 .p-dist  { font-family:var(--mono); font-size:11px; color:var(--gold); margin-top:6px; padding-top:6px; border-top:1px solid var(--border); }
 .p-tx    { font-size:11px; color:var(--text3); font-style:italic; line-height:1.5; margin-top:6px; padding-top:6px; border-top:1px solid var(--border); }
 
-/* ── MAP OVERLAYS ── */
 #map-stats {
   position:absolute; bottom:28px; right:10px; z-index:1000;
   display:flex; flex-direction:column; gap:5px; pointer-events:none;
@@ -364,19 +334,13 @@ html, body {
 </head>
 <body>
 
-<!-- ╔══════════════════════════════════════════╗ -->
-<!-- ║  EDIT THESE TWO VALUES THEN SAVE         ║ -->
-<!-- ╚══════════════════════════════════════════╝ -->
 <script>
 const CONFIG = {
-  SUPABASE_URL:      "https://xnjulaohljlgajxfrqrb.supabase.co",
-  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhuanVsYW9obGpsZ2FqeGZycXJiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1ODQxNjUsImV4cCI6MjA5MTE2MDE2NX0.Q9JWRXjw0q8I6jQM9-Pe0YEMpO8NY7vtW_Bk9hJL8Kw",
+  SUPABASE_URL:      "YOUR_SUPABASE_URL_HERE",
+  SUPABASE_ANON_KEY: "YOUR_SUPABASE_ANON_KEY_HERE",
   INITIAL_LOAD: 100,
   RADIUS_MILES: 5,
-  CITIES: {
-    "memphis":   { "label":"Memphis, TN",   "center":[35.1495,-90.0490], "zoom":12 },
-    "baltimore": { "label":"Baltimore, MD", "center":[39.2904,-76.6122], "zoom":12 }
-  }
+  CITY: { label:"Memphis, TN", center:[35.1495,-90.0490], zoom:12 }
 };
 </script>
 
@@ -391,17 +355,9 @@ const CONFIG = {
 <div id="header">
   <span class="logo-hood">Hood</span><span class="logo-brief">Brief</span>
   <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+  <span class="city-label">Memphis, TN</span>
   <div id="conn-dot" title="Connection status"></div>
   <div id="clock"></div>
-</div>
-
-<div id="city-tabs">
-  <div class="city-tab mem active" data-city="memphis">
-    Memphis, TN <span class="tab-n" id="cnt-memphis">0</span>
-  </div>
-  <div class="city-tab balt" data-city="baltimore">
-    Baltimore, MD <span class="tab-n" id="cnt-baltimore">0</span>
-  </div>
 </div>
 
 <div id="radius-bar">
@@ -419,11 +375,11 @@ const CONFIG = {
 </div>
 
 <div id="filter-bar">
-      <div class="chip active" data-f="all">All</div>
-      <div class="chip" data-f="p1">Priority 1 — Immediate</div>
-      <div class="chip" data-f="p2">Priority 2 — Urgent</div>
-      <div class="chip" data-f="gang">⚠ Gang Hotspot</div>
-    </div>
+  <div class="chip active" data-f="all">All</div>
+  <div class="chip" data-f="p1">Priority 1 — Immediate</div>
+  <div class="chip" data-f="p2">Priority 2 — Urgent</div>
+  <div class="chip" data-f="gang">⚠ Gang Hotspot</div>
+</div>
 
 <div id="main">
   <div id="feed-panel">
@@ -497,7 +453,6 @@ const SB = {
 /* ── STATE ── */
 const S = {
   incidents:    [],
-  activeCity:   "memphis",
   filter:       "all",
   selectedId:   null,
   markers:      {},
@@ -510,16 +465,11 @@ const S = {
 
 /* ── BADGE CONFIG ── */
 const BADGE = {
-  p1:      { cls:"badge-p1",      label:"Priority 1 — Immediate Response" },
-  p2:      { cls:"badge-p2",      label:"Priority 2 — Urgent"             },
-  p3:      { cls:"badge-p3",      label:"Priority 3 — Non-Urgent"         },
-  medical: { cls:"badge-medical", label:"Medical Emergency"               },
-  fire:    { cls:"badge-fire",    label:"Fire / Hazmat"                   },
+  p1: { cls:"badge-p1", label:"Priority 1 — Immediate Response" },
+  p2: { cls:"badge-p2", label:"Priority 2 — Urgent"             },
 };
 
-const PIN_COL = {
-  p1:"#ff3d4f", p2:"#f59e0b", p3:"#10d98a", medical:"#3d9eff", fire:"#ff6b1a"
-};
+const PIN_COL = { p1:"#ff3d4f", p2:"#f59e0b" };
 
 /* ── HAVERSINE DISTANCE (miles) ── */
 function haversine(lat1, lng1, lat2, lng2) {
@@ -566,7 +516,6 @@ function getVisible() {
       if (S.filter === "gang") return i.gang_hotspot === true;
       return S.filter === "all" || i.priority === S.filter;
     }
-    if (i.city !== S.activeCity) return false;
     if (S.filter === "gang") return i.gang_hotspot === true;
     return S.filter === "all" || i.priority === S.filter;
   });
@@ -579,8 +528,12 @@ function getDist(inc) {
 
 /* ── MAP INIT ── */
 function initMap() {
-  const c = CONFIG.CITIES[S.activeCity];
-  S.map = L.map("map", { center:c.center, zoom:c.zoom, zoomControl:false, attributionControl:false });
+  S.map = L.map("map", {
+    center: CONFIG.CITY.center,
+    zoom:   CONFIG.CITY.zoom,
+    zoomControl: false,
+    attributionControl: false
+  });
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:18 }).addTo(S.map);
   L.control.zoom({ position:"bottomright" }).addTo(S.map);
 }
@@ -588,16 +541,8 @@ function initMap() {
 function makeIcon(priority, selected, inRadius, isGang) {
   const col  = isGang ? "#ff6b1a" : (PIN_COL[priority] || "#6b7d96");
   const sz   = selected ? 20 : inRadius ? 16 : 12;
-  const glow = selected
-    ? `box-shadow:0 0 14px ${col}90;`
-    : isGang
-      ? `box-shadow:0 0 10px ${col}70;`
-      : inRadius ? `box-shadow:0 0 8px ${col}60;` : "";
-  const border = isGang
-    ? `border:2px solid #ff6b1a;`
-    : inRadius
-      ? `border:2px solid var(--gold);`
-      : `border:2px solid rgba(255,255,255,0.55);`;
+  const glow = selected ? `box-shadow:0 0 14px ${col}90;` : isGang ? `box-shadow:0 0 10px ${col}70;` : inRadius ? `box-shadow:0 0 8px ${col}60;` : "";
+  const border = isGang ? `border:2px solid #ff6b1a;` : inRadius ? `border:2px solid var(--gold);` : `border:2px solid rgba(255,255,255,0.55);`;
   return L.divIcon({
     className:"",
     html:`<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${col};${border}${glow}transition:all 0.2s;"></div>`,
@@ -614,16 +559,14 @@ function makeUserIcon() {
 }
 
 function popupHTML(inc) {
-  const b    = BADGE[inc.priority] || BADGE.p3;
+  const b    = BADGE[inc.priority] || BADGE.p2;
   const dist = getDist(inc);
-  const city = CONFIG.CITIES[inc.city]?.label || inc.city;
   return `
     <div class="p-badge ${b.cls}">${b.label}</div>
     <div class="p-title">${inc.title || "Unknown incident"}</div>
     <div class="p-row">📍 <b>${inc.location || "Location unknown"}</b></div>
     <div class="p-row">🕐 <b>${fmtTime(inc.created_at)} — ${fmtAgo(inc.created_at)}</b></div>
     <div class="p-row">🚔 <b>${inc.unit || "—"}</b></div>
-    <div class="p-row">🏙 <b>${city}</b></div>
     ${inc.gang_hotspot ? `<div class="p-gang">⚠ ${inc.gang_zone}</div>` : ""}
     ${dist !== null ? `<div class="p-dist">📏 ${fmtDist(dist)} from search location</div>` : ""}
     ${inc.transcript ? `<div class="p-tx">"${inc.transcript.slice(0,140)}${inc.transcript.length>140?"…":""}"</div>` : ""}
@@ -634,24 +577,19 @@ function popupHTML(inc) {
 function syncMarkers() {
   const visible    = getVisible();
   const visibleIds = new Set(visible.map(i => i.id));
-
   Object.keys(S.markers).forEach(id => {
     if (!visibleIds.has(id)) { S.markers[id].remove(); delete S.markers[id]; }
   });
-
   visible.forEach(inc => {
     if (!inc.lat || !inc.lng) return;
     const selected = inc.id === S.selectedId;
-    const inRadius = S.radiusMode;
     const isGang   = inc.gang_hotspot === true;
-    const icon     = makeIcon(inc.priority, selected, inRadius, isGang);
-
+    const icon     = makeIcon(inc.priority, selected, S.radiusMode, isGang);
     if (S.markers[inc.id]) {
       S.markers[inc.id].setIcon(icon);
       S.markers[inc.id].setPopupContent(popupHTML(inc));
       return;
     }
-
     const m = L.marker([inc.lat, inc.lng], { icon })
       .addTo(S.map)
       .bindPopup(popupHTML(inc), { maxWidth:270 })
@@ -673,15 +611,12 @@ function renderFeed() {
     });
   }
 
-  const last24  = S.incidents.filter(i => isLast24h(i.created_at)).length;
-  const liveN   = S.incidents.filter(i => (Date.now()-new Date(i.created_at)) < 3600000).length;
-  const gangN   = S.incidents.filter(i => i.gang_hotspot === true).length;
-
-  document.getElementById("stat-24h").textContent   = last24;
-  document.getElementById("stat-live").textContent  = liveN;
-  document.getElementById("stat-gang").textContent  = gangN;
-  document.getElementById("cnt-memphis").textContent   = S.incidents.filter(i=>i.city==="memphis").length;
-  document.getElementById("cnt-baltimore").textContent = S.incidents.filter(i=>i.city==="baltimore").length;
+  const last24 = S.incidents.filter(i => isLast24h(i.created_at)).length;
+  const liveN  = S.incidents.filter(i => (Date.now()-new Date(i.created_at)) < 3600000).length;
+  const gangN  = S.incidents.filter(i => i.gang_hotspot === true).length;
+  document.getElementById("stat-24h").textContent  = last24;
+  document.getElementById("stat-live").textContent = liveN;
+  document.getElementById("stat-gang").textContent = gangN;
 
   const label = S.radiusMode
     ? `${list.length} within ${CONFIG.RADIUS_MILES} mi`
@@ -700,7 +635,7 @@ function renderFeed() {
     const msg = S.radiusMode
       ? `<span class="ico">🔍</span>No incidents within<br>${CONFIG.RADIUS_MILES} miles in the last 24 hours`
       : S.filter === "gang"
-        ? `<span class="ico">✅</span>No gang hotspot incidents<br>in this view`
+        ? `<span class="ico">✅</span>No gang hotspot incidents`
         : `<span class="ico">📭</span>No incidents match<br>this filter`;
     scroll.innerHTML = `<div class="state-msg">${msg}</div>`;
     syncMarkers();
@@ -708,18 +643,15 @@ function renderFeed() {
   }
 
   scroll.innerHTML = list.map(inc => {
-    const b        = BADGE[inc.priority] || BADGE.p3;
-    const sel      = inc.id === S.selectedId ? " selected" : "";
-    const inR      = S.radiusMode ? " in-radius" : "";
-    const gangCls  = inc.gang_hotspot ? " is-gang" : "";
-    const dist     = getDist(inc);
-    const cityClass = inc.city === "baltimore" ? "baltimore" : "memphis";
-    const cityLabel = inc.city === "baltimore" ? "BALT" : "MEM";
+    const b       = BADGE[inc.priority] || BADGE.p2;
+    const sel     = inc.id === S.selectedId ? " selected" : "";
+    const inR     = S.radiusMode ? " in-radius" : "";
+    const gangCls = inc.gang_hotspot ? " is-gang" : "";
+    const dist    = getDist(inc);
 
     return `<div class="incident${sel}${inR}${gangCls}" data-id="${inc.id}">
       <div class="inc-row1">
         <span class="badge ${b.cls}">${b.label}</span>
-        <span class="city-pill ${cityClass}">${cityLabel}</span>
         ${inc.gang_hotspot ? `<span class="gang-tag">⚠ Gang Hotspot</span>` : ""}
         ${S.radiusMode && dist !== null ? `<span class="radius-tag">📏 ${fmtDist(dist)}</span>` : ""}
         ${isNew(inc.created_at) ? `<span class="new-tag">NEW</span>` : ""}
@@ -748,17 +680,14 @@ function renderFeed() {
 function selectIncident(id) {
   S.selectedId = id;
   const inc = S.incidents.find(i => i.id === id);
-
   Object.entries(S.markers).forEach(([mid, m]) => {
     const i = S.incidents.find(x => x.id === mid);
     if (i) m.setIcon(makeIcon(i.priority, mid === id, S.radiusMode, i.gang_hotspot === true));
   });
-
   if (inc && inc.lat && inc.lng) {
-    S.map.flyTo([inc.lat, inc.lng], 15, { duration:0.75 });
+    S.map.flyTo([parseFloat(inc.lat), parseFloat(inc.lng)], 15, { duration:0.75 });
     setTimeout(() => S.markers[id]?.openPopup(), 800);
   }
-
   renderFeed();
   document.querySelector(`.incident[data-id="${id}"]`)
     ?.scrollIntoView({ behavior:"smooth", block:"nearest" });
@@ -813,8 +742,7 @@ function clearRadiusSearch() {
   document.getElementById("clear-btn").classList.remove("visible");
   document.getElementById("radius-status").classList.remove("visible");
   document.getElementById("geo-error").classList.remove("visible");
-  const c = CONFIG.CITIES[S.activeCity];
-  S.map.flyTo(c.center, c.zoom, { duration:0.8 });
+  S.map.flyTo(CONFIG.CITY.center, CONFIG.CITY.zoom, { duration:0.8 });
   Object.values(S.markers).forEach(m => m.remove());
   S.markers = {};
   renderFeed();
@@ -822,23 +750,19 @@ function clearRadiusSearch() {
 
 /* ── TOAST ── */
 function showToast(inc) {
-  const wrap  = document.getElementById("toast-wrap");
-  const isMem = inc.city === "memphis";
-  const dot   = isMem ? "var(--memphis)" : "var(--baltimore)";
-  const city  = isMem ? "Memphis, TN" : "Baltimore, MD";
-  const el    = document.createElement("div");
+  const wrap = document.getElementById("toast-wrap");
+  const el   = document.createElement("div");
   el.className = inc.gang_hotspot ? "toast gang-toast" : "toast";
   el.innerHTML = `
-    <div class="t-dot" style="background:${inc.gang_hotspot ? 'var(--gang)' : dot}"></div>
+    <div class="t-dot" style="background:${inc.gang_hotspot ? 'var(--gang)' : 'var(--memphis)'}"></div>
     <div style="flex:1">
-      <div class="t-city" style="color:${dot}">${city}</div>
+      <div class="t-city" style="color:var(--memphis)">Memphis, TN</div>
       <div class="t-title">${inc.title || "New incident"}</div>
       ${inc.location ? `<div class="t-loc">${inc.location}</div>` : ""}
       ${inc.gang_hotspot ? `<div class="t-gang">⚠ ${inc.gang_zone}</div>` : ""}
     </div>`;
   el.addEventListener("click", () => {
-    if (inc.city !== S.activeCity && !S.radiusMode) switchCity(inc.city);
-    setTimeout(() => selectIncident(inc.id), 120);
+    selectIncident(inc.id);
     dismiss(el);
   });
   wrap.prepend(el);
@@ -849,26 +773,6 @@ function showToast(inc) {
 function dismiss(el) {
   el.classList.add("out");
   setTimeout(() => el.remove(), 280);
-}
-
-/* ── CITY SWITCH ── */
-function switchCity(city) {
-  console.log("switchCity called with:", city, Object.keys(CONFIG.CITIES));
-  if (!CONFIG.CITIES[city]) {
-    console.error("City not found in CONFIG:", city);
-    return;
-  }
-  S.activeCity = city;
-  S.selectedId = null;
-  document.querySelectorAll(".city-tab").forEach(t =>
-    t.classList.toggle("active", t.dataset.city === city));
-  if (!S.radiusMode) {
-    const c = CONFIG.CITIES[city];
-    S.map.flyTo(c.center, c.zoom, { duration:0.85 });
-    Object.values(S.markers).forEach(m => m.remove());
-    S.markers = {};
-  }
-  renderFeed();
 }
 
 /* ── CONNECTION ── */
@@ -896,67 +800,22 @@ document.getElementById("filter-bar").addEventListener("click", e => {
   renderFeed();
 });
 
-document.getElementById("city-tabs").addEventListener("click", e => {
-  const tab = e.target.closest(".city-tab");
-  if (!tab || tab.dataset.city === S.activeCity) return;
-  switchCity(tab.dataset.city);
-});
-
 document.getElementById("search-btn").addEventListener("click", doRadiusSearch);
 document.getElementById("clear-btn").addEventListener("click", clearRadiusSearch);
 document.getElementById("addr-input").addEventListener("keydown", e => {
   if (e.key === "Enter") doRadiusSearch();
 });
 
-/* ── BOOT ── */
-async function boot() {
-  initMap();
-  const unconfigured =
-    CONFIG.SUPABASE_URL.includes("YOUR_") ||
-    CONFIG.SUPABASE_ANON_KEY.includes("YOUR_");
-
-  if (unconfigured) {
-    document.getElementById("boot-msg").innerHTML =
-      `<span style="color:var(--red)">Add your Supabase URL and anon key to the CONFIG block</span>`;
-    document.querySelector(".spinner").style.display = "none";
-    return;
-  }
-
-  document.getElementById("boot-msg").textContent = "Loading incidents…";
-  try {
-    const rows = await SB.query(`incidents?order=created_at.desc&limit=${CONFIG.INITIAL_LOAD}`);
-    S.incidents = rows;
-    document.getElementById("boot-overlay").classList.add("gone");
-    renderFeed();
-
-    SB.subscribe(newRow => {
-      S.incidents.unshift(newRow);
-      if (S.incidents.length > 600) S.incidents = S.incidents.slice(0,600);
-      showToast(newRow);
-      if (newRow.city === S.activeCity || S.radiusMode) renderFeed();
-      else {
-        document.getElementById("cnt-memphis").textContent   = S.incidents.filter(i=>i.city==="memphis").length;
-        document.getElementById("cnt-baltimore").textContent = S.incidents.filter(i=>i.city==="baltimore").length;
-      }
-    });
-
-  } catch(err) {
-    document.getElementById("boot-msg").innerHTML =
-      `<span style="color:var(--red)">Connection failed: ${err.message}</span>`;
-    document.querySelector(".spinner").style.display = "none";
-  }
-}
+/* ── POLLING FALLBACK ── */
 async function pollForUpdates() {
   if (CONFIG.SUPABASE_URL.includes("YOUR_")) return;
   try {
     const latest = S.incidents.length > 0
       ? S.incidents[0].created_at
       : new Date(Date.now() - 3600000).toISOString();
-
     const rows = await SB.query(
       `incidents?select=*&order=created_at.desc&limit=50&created_at=gt.${encodeURIComponent(latest)}`
     );
-
     if (rows && rows.length > 0) {
       let added = 0;
       rows.forEach(newRow => {
@@ -969,7 +828,6 @@ async function pollForUpdates() {
         }
       });
       if (added > 0) {
-        console.log(`[Poll] Added ${added} new incident(s)`);
         if (S.incidents.length > 600) S.incidents = S.incidents.slice(0, 600);
         renderFeed();
       }
@@ -978,6 +836,46 @@ async function pollForUpdates() {
     console.log("[Poll] Error:", err.message);
   }
 }
+
+/* ── BOOT ── */
+async function boot() {
+  initMap();
+  const unconfigured =
+    CONFIG.SUPABASE_URL.includes("YOUR_") ||
+    CONFIG.SUPABASE_ANON_KEY.includes("YOUR_");
+  if (unconfigured) {
+    document.getElementById("boot-msg").innerHTML =
+      `<span style="color:var(--red)">Add your Supabase URL and anon key to the CONFIG block</span>`;
+    document.querySelector(".spinner").style.display = "none";
+    return;
+  }
+  document.getElementById("boot-msg").textContent = "Loading incidents…";
+  try {
+    const rows = await SB.query(`incidents?select=*&order=created_at.desc&limit=${CONFIG.INITIAL_LOAD}`);
+    S.incidents = rows.map(i => ({
+      ...i,
+      lat: i.lat ? parseFloat(i.lat) : null,
+      lng: i.lng ? parseFloat(i.lng) : null,
+    }));
+    document.getElementById("boot-overlay").classList.add("gone");
+    renderFeed();
+    SB.subscribe(newRow => {
+      newRow.lat = newRow.lat ? parseFloat(newRow.lat) : null;
+      newRow.lng = newRow.lng ? parseFloat(newRow.lng) : null;
+      if (!S.incidents.find(i => i.id === newRow.id)) {
+        S.incidents.unshift(newRow);
+        if (S.incidents.length > 600) S.incidents = S.incidents.slice(0,600);
+        showToast(newRow);
+        renderFeed();
+      }
+    });
+  } catch(err) {
+    document.getElementById("boot-msg").innerHTML =
+      `<span style="color:var(--red)">Connection failed: ${err.message}</span>`;
+    document.querySelector(".spinner").style.display = "none";
+  }
+}
+
 setInterval(pollForUpdates, 30000);
 setTimeout(pollForUpdates, 5000);
 boot();
