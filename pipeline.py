@@ -1,7 +1,8 @@
 """
 Hood Brief — Scanner Pipeline
-Memphis, TN + Baltimore, MD
+Memphis, TN only
 Includes: 10-code translation, geocoding, gang hotspot detection
+P1 and P2 incidents only
 """
 
 import os
@@ -26,7 +27,6 @@ CITIES = {
         "stream_url": os.environ.get("MEMPHIS_STREAM_URL", ""),
         "center":     (35.1495, -90.0490),
     },
-   
 }
 
 CHUNK_SECONDS = 30
@@ -35,12 +35,7 @@ MAX_RETRIES   = 3
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 # ══════════════════════════════════════════════════════════════════
-#  GANG HOTSPOT ZONES
-#
-#  Each entry is a zone name paired with a list of keywords.
-#  If ANY keyword is found in the incident location, the incident
-#  is tagged with that zone name and gang_hotspot = true.
-#  Keywords are matched case-insensitively.
+#  GANG HOTSPOT ZONES — MEMPHIS
 # ══════════════════════════════════════════════════════════════════
 
 GANG_ZONES = {
@@ -108,8 +103,8 @@ GANG_ZONES = {
         {
             "zone": "Whitehaven — High Gang Activity",
             "keywords": [
-                "whitehaven", "white haven", "s third",
-                "brooks rd", "brooks road", "shelby dr south",
+                "whitehaven", "white haven",
+                "brooks rd", "brooks road",
                 "american way", "kerr ave", "kerr avenue",
                 "swinnea", "tchulahoma", "get well rd",
             ],
@@ -125,8 +120,7 @@ GANG_ZONES = {
             "zone": "Parkway Village — High Gang Activity",
             "keywords": [
                 "parkway village", "e shelby dr",
-                "knight arnold", "lamar ave east",
-                "presidents island", "millbranch",
+                "knight arnold", "millbranch",
             ],
         },
         {
@@ -134,176 +128,141 @@ GANG_ZONES = {
             "keywords": [
                 "westwood", "walker homes", "person ave",
                 "s westwood", "westhaven", "s parkway west",
-                "s cooper", "cooper street south",
             ],
         },
     ],
-   
 }
+
 
 # ══════════════════════════════════════════════════════════════════
 #  GANG HOTSPOT DETECTOR
 # ══════════════════════════════════════════════════════════════════
 
 def check_gang_hotspot(location, title, city):
-    """
-    Checks whether an incident location matches any known gang
-    hotspot zone for the given city.
-
-    Searches both the location string and the incident title
-    to maximise detection accuracy.
-
-    Returns (is_hotspot: bool, zone_name: str or None)
-    """
     if not location:
         return False, None
-
     zones = GANG_ZONES.get(city, [])
     search_text = f"{location} {title or ''}".lower()
-
     for zone in zones:
         for keyword in zone["keywords"]:
             if keyword.lower() in search_text:
                 return True, zone["zone"]
-
     return False, None
 
 
 # ══════════════════════════════════════════════════════════════════
-#  10-CODE DICTIONARIES
+#  10-CODE DICTIONARY — MEMPHIS
 # ══════════════════════════════════════════════════════════════════
 
-CODES_COMMON = {
-    "10-0":  "use caution",
-    "10-1":  "poor radio signal",
-    "10-2":  "good radio signal",
-    "10-3":  "stop transmitting",
-    "10-4":  "acknowledged",
-    "10-5":  "relay message",
-    "10-6":  "busy stand by",
-    "10-7":  "out of service",
-    "10-8":  "in service available",
-    "10-9":  "repeat transmission",
-    "10-10": "off duty",
-    "10-11": "animal complaint",
-    "10-12": "standby",
-    "10-13": "weather and road conditions",
-    "10-14": "civilian escort",
-    "10-15": "prisoner in custody",
-    "10-16": "pick up prisoner",
-    "10-17": "pick up documents",
-    "10-18": "complete assignment quickly",
-    "10-19": "return to station",
-    "10-20": "location",
-    "10-21": "call by telephone",
-    "10-22": "disregard cancel",
-    "10-23": "arrived at scene",
-    "10-24": "assignment completed",
-    "10-25": "meet officer",
-    "10-26": "estimated time of arrival",
-    "10-27": "drivers license check",
-    "10-28": "vehicle registration check",
-    "10-29": "check for warrants",
-    "10-30": "unauthorized use of radio",
-    "10-31": "crime in progress",
-    "10-32": "person with a gun",
-    "10-33": "emergency all units stand by",
-    "10-34": "riot",
-    "10-35": "major crime alert",
-    "10-36": "correct time",
-    "10-37": "suspicious vehicle",
-    "10-38": "traffic stop",
-    "10-39": "proceed with lights and siren",
-    "10-40": "silent run no lights or siren",
-    "10-41": "beginning tour of duty",
-    "10-42": "ending tour of duty",
-    "10-43": "information",
-    "10-44": "request permission to leave patrol",
-    "10-45": "dead animal",
-    "10-46": "assist motorist",
-    "10-47": "emergency road repairs needed",
-    "10-48": "traffic standard needs repair",
-    "10-49": "traffic light out",
-    "10-50": "vehicle accident",
-    "10-51": "request tow truck",
-    "10-52": "request ambulance",
-    "10-53": "road blocked",
-    "10-54": "livestock on road",
-    "10-55": "intoxicated driver",
-    "10-56": "intoxicated pedestrian",
-    "10-57": "hit and run accident",
-    "10-58": "direct traffic",
-    "10-59": "escort",
-    "10-60": "squad in vicinity",
-    "10-61": "personnel in area",
-    "10-62": "reply to message",
-    "10-63": "prepare to copy",
-    "10-64": "message for local delivery",
-    "10-65": "net message assignment",
-    "10-66": "message cancellation",
-    "10-67": "person calling for help",
-    "10-68": "dispatch information",
-    "10-69": "message received",
-    "10-70": "fire alarm",
-    "10-71": "shooting",
-    "10-72": "stabbing",
-    "10-73": "smoke report",
-    "10-74": "negative",
-    "10-75": "in contact with",
-    "10-76": "en route",
-    "10-77": "estimated time of arrival",
-    "10-78": "need assistance",
-    "10-79": "notify coroner",
-    "10-80": "pursuit in progress",
-    "10-81": "breathalyzer report",
-    "10-82": "reserve lodging",
-    "10-83": "school crossing detail",
-    "10-84": "advise estimated time of arrival",
-    "10-85": "delayed",
-    "10-86": "officer on duty",
-    "10-87": "pick up checks",
-    "10-88": "present phone number of officer",
-    "10-89": "bomb threat",
-    "10-90": "bank alarm",
-    "10-91": "pick up prisoner",
-    "10-92": "improperly parked vehicle",
-    "10-93": "blockade",
-    "10-94": "drag racing",
-    "10-95": "subject in custody",
-    "10-96": "mental health subject",
-    "10-97": "arrived at scene",
-    "10-98": "escaped prisoner",
-    "10-99": "officer needs help emergency",
-    "10-100": "bathroom break",
-    "10-200": "police needed at this location",
-}
-
 CODES_MEMPHIS = {
-    **CODES_COMMON,
+    "10-0":   "use caution",
+    "10-1":   "poor radio signal",
+    "10-2":   "good radio signal",
+    "10-3":   "stop transmitting",
+    "10-4":   "acknowledged",
+    "10-5":   "relay message",
+    "10-6":   "busy stand by",
+    "10-7":   "out of service",
+    "10-8":   "in service available",
+    "10-9":   "repeat transmission",
+    "10-10":  "off duty",
+    "10-11":  "animal complaint",
+    "10-12":  "standby",
+    "10-13":  "weather and road conditions",
+    "10-14":  "civilian escort",
+    "10-15":  "subject in custody",
     "10-16":  "domestic disturbance",
+    "10-17":  "pick up documents",
+    "10-18":  "complete assignment quickly",
+    "10-19":  "return to station",
+    "10-20":  "location",
+    "10-21":  "call by telephone",
+    "10-22":  "disregard cancel",
+    "10-23":  "arrived at scene",
+    "10-24":  "assignment completed",
+    "10-25":  "meet officer",
+    "10-26":  "estimated time of arrival",
+    "10-27":  "drivers license check",
+    "10-28":  "vehicle registration check",
+    "10-29":  "check for warrants",
+    "10-30":  "unauthorized use of radio",
+    "10-31":  "crime in progress",
+    "10-32":  "person with a gun",
+    "10-33":  "emergency all units stand by",
     "10-34":  "open door or window",
     "10-35":  "alarm",
+    "10-36":  "correct time",
+    "10-37":  "suspicious vehicle",
+    "10-38":  "traffic stop",
+    "10-39":  "proceed with lights and siren",
+    "10-40":  "silent run no lights or siren",
+    "10-41":  "beginning tour of duty",
+    "10-42":  "ending tour of duty",
+    "10-43":  "information",
+    "10-44":  "request permission to leave patrol",
+    "10-45":  "dead animal",
+    "10-46":  "assist motorist",
+    "10-47":  "emergency road repairs needed",
     "10-48":  "accident property damage only",
     "10-49":  "accident personal injury",
     "10-50":  "accident fatality",
+    "10-51":  "request tow truck",
     "10-52":  "ambulance request",
     "10-53":  "dead on arrival",
+    "10-54":  "livestock on road",
     "10-55":  "drunk driver",
+    "10-56":  "intoxicated pedestrian",
+    "10-57":  "hit and run accident",
+    "10-58":  "direct traffic",
     "10-59":  "suspicious person",
+    "10-60":  "squad in vicinity",
+    "10-61":  "personnel in area",
+    "10-62":  "reply to message",
+    "10-63":  "prepare to copy",
+    "10-64":  "message for local delivery",
+    "10-65":  "net message assignment",
     "10-66":  "suspicious package",
+    "10-67":  "person calling for help",
+    "10-68":  "dispatch information",
+    "10-69":  "message received",
     "10-70":  "prowler",
     "10-71":  "shooting",
     "10-72":  "stabbing",
+    "10-73":  "smoke report",
+    "10-74":  "negative",
+    "10-75":  "in contact with",
+    "10-76":  "en route",
+    "10-77":  "estimated time of arrival",
+    "10-78":  "need assistance",
     "10-79":  "notify investigator",
+    "10-80":  "pursuit in progress",
+    "10-81":  "breathalyzer report",
+    "10-82":  "reserve lodging",
+    "10-83":  "school crossing detail",
+    "10-84":  "advise estimated time of arrival",
+    "10-85":  "delayed",
+    "10-86":  "officer on duty",
+    "10-87":  "pick up checks",
+    "10-88":  "present phone number of officer",
+    "10-89":  "bomb threat",
+    "10-90":  "bank alarm",
+    "10-91":  "pick up prisoner",
     "10-91A": "vicious animal",
     "10-91B": "stray animal",
     "10-91C": "injured animal",
     "10-91D": "dead animal",
     "10-91E": "animal bite",
+    "10-92":  "improperly parked vehicle",
+    "10-93":  "blockade",
+    "10-94":  "drag racing",
+    "10-95":  "subject in custody",
+    "10-96":  "mental health subject",
+    "10-97":  "arrived at scene",
+    "10-98":  "escaped prisoner",
+    "10-99":  "officer needs help emergency",
+    "10-100": "bathroom break",
+    "10-200": "police needed at this location",
 }
-
-
-
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -311,7 +270,7 @@ CODES_MEMPHIS = {
 # ══════════════════════════════════════════════════════════════════
 
 def translate_ten_codes(transcript, city):
-    codes = CODES_MEMPHIS if city == "memphis" else CODES_BALTIMORE
+    codes = CODES_MEMPHIS
     translated = transcript
     sorted_codes = sorted(codes.items(), key=lambda x: len(x[0]), reverse=True)
     for code, meaning in sorted_codes:
@@ -405,7 +364,6 @@ def geocode_location(location_text, city):
             print(f"  Google geocoding error: {e}")
 
     # Step 3: Nominatim fallback
-    # Build query list — if intersection, also try first street only
     queries = [f"{location_text}, {city_label}"]
     if " and " in location_text.lower():
         first_street = location_text.split(" and ")[0].strip()
@@ -470,8 +428,9 @@ def transcribe(audio_bytes):
                     file=audio_file,
                     language="en",
                     prompt=(
-                        "Police scanner radio dispatch. May contain codes like "
-                        "10-4, 10-20, 10-33, 10-99, unit numbers, and street addresses."
+                        "Police scanner radio dispatch Memphis Tennessee. "
+                        "May contain codes like 10-4, 10-20, 10-33, 10-99, "
+                        "unit numbers, and Memphis street addresses."
                     )
                 )
             return result.text.strip()
@@ -518,15 +477,13 @@ Priority guide:
   fire    = any fire, smoke, explosion, hazmat
 
 IMPORTANT: Scanner audio is often transcribed imperfectly by speech recognition.
-   Street names may be misheared or misspelled. Use your knowledge of real street
-   names in {city_label} to correct likely transcription errors in addresses before
-   returning them. If you see a street name that does not exist in {city_label} but
-   sounds similar to one that does, use the correct real street name instead.
-   Always return the most likely correct real street address based on context clues
-   in the transcript. For example "809 Aletha" in Memphis should be corrected to
-   "809 Alida Ave" because Alida Ave exists in Memphis and Aletha does not.
+Street names may be misheared or misspelled. Use your knowledge of real street names
+in {city_label} to correct likely transcription errors in addresses before returning
+them. If you see a street name that does not exist in {city_label} but sounds similar
+to one that does, use the correct real street name instead. Always return the most
+likely correct real street address based on context clues in the transcript.
 
-   For lat/lng use city center as fallback: {center_lat}, {center_lng}"""
+For lat/lng use city center as fallback: {center_lat}, {center_lng}"""
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -612,26 +569,26 @@ def run_city(city):
                 print(f"[{label}] No incident detected - skipping")
                 continue
 
-            # Only save P1 and P2 incidents — skip P3, medical, and fire
+            # Step 5: Only save P1 and P2 incidents
             priority = parsed.get("priority", "")
             if priority not in ("p1", "p2"):
                 print(f"[{label}] Skipping {priority.upper()} incident - below threshold")
                 continue
 
-            # Step 5: Geocode the location
+            # Step 6: Geocode the location
             location = parsed.get("location")
             lat, lng = geocode_location(location, city)
             parsed["lat"] = lat
             parsed["lng"] = lng
 
-            # Step 6: Check gang hotspot
+            # Step 7: Check gang hotspot
             gang_hotspot, gang_zone = check_gang_hotspot(
                 location, parsed.get("title"), city
             )
             if gang_hotspot:
                 print(f"  ⚠ Gang hotspot detected: {gang_zone}")
 
-            # Step 7: Save to Supabase
+            # Step 8: Save to Supabase
             save_incident(
                 parsed, city,
                 transcript_raw, transcript_translated,
@@ -690,7 +647,7 @@ if __name__ == "__main__":
         threads.append(t)
         print(f"  Started: {CITIES[city]['label']}")
 
-    print("\nBoth city pipelines running.\n")
+    print("\nMemphis pipeline running.\n")
 
     try:
         while True:
