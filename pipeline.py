@@ -26,11 +26,7 @@ CITIES = {
         "stream_url": os.environ.get("MEMPHIS_STREAM_URL", ""),
         "center":     (35.1495, -90.0490),
     },
-    "baltimore": {
-        "label":      "Baltimore, MD",
-        "stream_url": os.environ.get("BALTIMORE_STREAM_URL", ""),
-        "center":     (39.2904, -76.6122),
-    },
+   
 }
 
 CHUNK_SECONDS = 30
@@ -142,113 +138,7 @@ GANG_ZONES = {
             ],
         },
     ],
-    "baltimore": [
-        {
-            "zone": "Sandtown-Winchester — High Gang Activity",
-            "keywords": [
-                "sandtown", "winchester st", "gilmor st",
-                "gilmor street", "stricker st", "stricker street",
-                "baker st sandtown", "mosher st", "mosher street",
-                "fremont ave", "fremont avenue", "carey st",
-                "carey street", "w north ave", "west north ave",
-                "pennsylvania ave west", "w pennsylvania",
-            ],
-        },
-        {
-            "zone": "Cherry Hill — High Gang Activity",
-            "keywords": [
-                "cherry hill rd", "cherry hill road",
-                "cherry hill drive", "seabury rd", "seabury road",
-                "round road", "cherry hill", "cherry hill blvd",
-                "benson ave cherry", "reedbird ave",
-            ],
-        },
-        {
-            "zone": "Broadway East — High Gang Activity",
-            "keywords": [
-                "broadway east", "e broadway", "mcelderry st",
-                "mcelderry street", "eager st east", "biddle st",
-                "biddle street", "federal st east", "federal street east",
-                "gay st", "gay street", "orleans st",
-                "aisquith st", "aisquith street",
-            ],
-        },
-        {
-            "zone": "Greenmount East — High Gang Activity",
-            "keywords": [
-                "greenmount ave", "greenmount avenue",
-                "greenmount east", "hoffman st", "hoffman street",
-                "brentwood ave", "brentwood avenue",
-                "e 25th st", "e 26th st", "e 27th st",
-                "e 28th st", "e 29th st", "e 30th st",
-                "e 33rd st", "e 34th st",
-            ],
-        },
-        {
-            "zone": "Upton & Druid Heights — High Gang Activity",
-            "keywords": [
-                "druid heights", "druid hill ave",
-                "druid hill avenue", "mcculloh st",
-                "mcculloh street", "dolphin st", "dolphin street",
-                "upton", "madison ave west", "w madison ave",
-                "pennsylvania ave", "w north ave upton",
-                "w lafayette ave", "lafayett ave west",
-            ],
-        },
-        {
-            "zone": "Southwest Baltimore — Operation Tornado Alley",
-            "keywords": [
-                "millington ave", "millington avenue",
-                "edmondson ave", "edmondson avenue",
-                "lemon st baltimore", "lemon street baltimore",
-                "pratt st southwest", "w pratt st",
-                "sw baltimore", "hawthorn rd",
-                "morley st", "morley street",
-                "brunt st", "brunt street",
-            ],
-        },
-        {
-            "zone": "Fells Point — Law Enforcement Focus Area",
-            "keywords": [
-                "fells point", "fell's point",
-                "thames st", "thames street",
-                "s broadway fells", "lancaster st",
-                "aliceanna st", "aliceanna street",
-                "s caroline", "caroline street south",
-            ],
-        },
-        {
-            "zone": "Patterson Park — MS-13 Activity",
-            "keywords": [
-                "patterson park", "highlandtown",
-                "conkling st", "conkling street",
-                "linwood ave", "linwood avenue",
-                "e fairmount ave", "fairmount avenue",
-                "eastern ave highlandtown", "s eaton st",
-                "s kenwood ave", "kenwood avenue south",
-            ],
-        },
-        {
-            "zone": "Pimlico — High Gang Activity",
-            "keywords": [
-                "pimlico", "reisterstown rd", "reisterstown road",
-                "quantico ave", "quantico avenue",
-                "w cold spring", "cold spring lane west",
-                "violet ave", "violet avenue",
-                "cylburn ave", "cylburn avenue",
-            ],
-        },
-        {
-            "zone": "Park Heights — High Gang Activity",
-            "keywords": [
-                "park heights", "park heights ave",
-                "park heights avenue", "belvedere ave",
-                "belvedere avenue", "wylie ave",
-                "garrison blvd", "garrison boulevard",
-                "w cold spring lane", "slade ave",
-            ],
-        },
-    ],
+   
 }
 
 # ══════════════════════════════════════════════════════════════════
@@ -412,24 +302,8 @@ CODES_MEMPHIS = {
     "10-91E": "animal bite",
 }
 
-CODES_BALTIMORE = {
-    **CODES_COMMON,
-    "10-1":    "unable to copy change location",
-    "10-4":    "message received acknowledged",
-    "10-7B":   "out of service personal",
-    "10-15":   "enroute to hospital with patient",
-    "10-19":   "return to",
-    "10-25":   "do you have contact with",
-    "10-33":   "emergency officer needs help",
-    "10-38":   "stop suspicious vehicle",
-    "10-40":   "respond without lights and siren",
-    "10-50PI": "accident with personal injury",
-    "10-50PD": "accident property damage only",
-    "10-57":   "hit and run",
-    "10-71":   "shooting",
-    "10-79":   "bomb threat",
-    "10-99":   "officer in danger immediate assistance needed",
-}
+
+
 
 
 # ══════════════════════════════════════════════════════════════════
