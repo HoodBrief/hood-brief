@@ -589,7 +589,16 @@ Priority guide:
   medical = any EMS or medical emergency
   fire    = any fire, smoke, explosion, hazmat
 
-For lat/lng use city center as fallback: {center_lat}, {center_lng}"""
+IMPORTANT: Scanner audio is often transcribed imperfectly by speech recognition.
+   Street names may be misheared or misspelled. Use your knowledge of real street
+   names in {city_label} to correct likely transcription errors in addresses before
+   returning them. If you see a street name that does not exist in {city_label} but
+   sounds similar to one that does, use the correct real street name instead.
+   Always return the most likely correct real street address based on context clues
+   in the transcript. For example "809 Aletha" in Memphis should be corrected to
+   "809 Alida Ave" because Alida Ave exists in Memphis and Aletha does not.
+
+   For lat/lng use city center as fallback: {center_lat}, {center_lng}"""
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
