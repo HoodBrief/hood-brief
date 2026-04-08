@@ -564,7 +564,7 @@ def run_city(city):
 
             # Step 5: Only save P1 and P2 incidents
             priority = parsed.get("priority", "")
-            if priority not in ("p1", "p2"):
+            if priority not in ("p1", "p2", "medical"):
                 print(f"[{label}] Skipping {priority.upper()} incident - below threshold")
                 continue
 
