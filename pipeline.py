@@ -459,52 +459,106 @@ def translate_ten_codes(transcript, city):
 def geocode_location(location_text, city):
     if not location_text:
         return CITIES[city]["center"]
+
+    # Clean up cross street from numbered address
+    # e.g. "2704 Perkins Rd and American Way" -> "2704 Perkins Rd"
+    cross_match = re.match(
+        r'^(\d+\s+[^,]+?)\s+and\s+.+$',
+        location_text.strip(),
+        re.IGNORECASE
+    )
+    if cross_match:
+        cleaned = cross_match.group(1).strip()
+        print(f"  Cleaned location: '{location_text}' -> '{cleaned}'")
+        location_text = cleaned
+
     city_info  = CITIES[city]
     city_label = city_info["label"]
+    google_key = os.environ.get("GOOGLE_MAPS_KEY", "")
 
-    # Try with full city name first
-    queries = [
-        f"{location_text}, {city_label}",
-        f"{location_text}, {city_label.split(',')[0]}",
-        location_text,
-    ]
+    # Step 1: Google Places API — finds named locations like
+    # apartment complexes, schools, parks, businesses
+    if google_key:
+        try:
+            r = requests.get(
+                "https://maps.googleapis.com/maps/api/place/findplacefromtext/json",
+                params={
+                    "input":        f"{location_text}, {city_label}",
+                    "inputtype":    "textquery",
+                    "fields":       "geometry,name,formatted_address",
+                    "locationbias": f"circle:30000@{city_info['center'][0]},{city_info['center'][1]}",
+                    "key":          google_key,
+                },
+                timeout=10,
+            )
+            data = r.json()
+            if data.get("status") == "OK" and data.get("candidates"):
+                loc = data["candidates"][0]["geometry"]["location"]
+                lat, lng = float(loc["lat"]), float(loc["lng"])
+                center_lat, center_lng = city_info["center"]
+                if abs(lat - center_lat) + abs(lng - center_lng) < 2.0:
+                    print(f"  Geocoded (Places): {location_text} -> {lat}, {lng}")
+                    return lat, lng
+            else:
+                print(f"  Places API: {data.get('status')} for: {location_text}")
+        except Exception as e:
+            print(f"  Places API error: {e}")
+
+    # Step 2: Google Geocoding API — finds street addresses
+    if google_key:
+        try:
+            r = requests.get(
+                "https://maps.googleapis.com/maps/api/geocode/json",
+                params={
+                    "address": f"{location_text}, {city_label}",
+                    "key":     google_key,
+                },
+                timeout=10,
+            )
+            data = r.json()
+            if data.get("status") == "OK":
+                loc = data["results"][0]["geometry"]["location"]
+                lat, lng = float(loc["lat"]), float(loc["lng"])
+                center_lat, center_lng = city_info["center"]
+                if abs(lat - center_lat) + abs(lng - center_lng) < 2.0:
+                    print(f"  Geocoded (Google): {location_text} -> {lat}, {lng}")
+                    return lat, lng
+                else:
+                    print(f"  Google result too far from city: {lat}, {lng}")
+            else:
+                print(f"  Google geocode: {data.get('status')} for: {location_text}")
+        except Exception as e:
+            print(f"  Google geocoding error: {e}")
+
+    # Step 3: Nominatim fallback
+    # Build query list — if intersection, also try first street only
+    queries = [f"{location_text}, {city_label}"]
+    if " and " in location_text.lower():
+        first_street = location_text.split(" and ")[0].strip()
+        queries.append(f"{first_street}, {city_label}")
+        queries.append(f"{first_street}, {city_label.split(',')[0]}")
 
     for query in queries:
         try:
-            # Nominatim requires a delay between requests
             time.sleep(1)
-            url     = "https://nominatim.openstreetmap.org/search"
-            params  = {
-                "q":              query,
-                "format":         "json",
-                "limit":          1,
-                "addressdetails": 1,
-            }
-            headers = {
-                "User-Agent":    "HoodBrief/1.0 (hoodbrief@proton.me)",
-                "Accept":        "application/json",
-                "Referer":       "https://hoodbrief.netlify.app",
-            }
-            r = requests.get(url, params=params, headers=headers, timeout=10)
-            if r.status_code != 200:
-                print(f"  Nominatim returned {r.status_code} for: {query}")
-                continue
+            r = requests.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={ "q": query, "format": "json", "limit": 1 },
+                headers={
+                    "User-Agent": "HoodBrief/1.0 (hoodbrief@proton.me)",
+                    "Accept":     "application/json",
+                },
+                timeout=10,
+            )
             results = r.json()
             if results:
-                lat = float(results[0]["lat"])
-                lng = float(results[0]["lon"])
-                # Sanity check — make sure coordinates are near the city
+                lat, lng = float(results[0]["lat"]), float(results[0]["lon"])
                 center_lat, center_lng = city_info["center"]
-                dist_from_center = abs(lat - center_lat) + abs(lng - center_lng)
-                if dist_from_center > 2.0:
-                    print(f"  Geocode result too far from city, skipping: {lat}, {lng}")
-                    continue
-                print(f"  Geocoded: {location_text} -> {lat}, {lng}")
-                return lat, lng
-            else:
-                print(f"  No results for: {query}")
+                if abs(lat - center_lat) + abs(lng - center_lng) < 2.0:
+                    print(f"  Geocoded (Nominatim): {location_text} -> {lat}, {lng}")
+                    return lat, lng
         except Exception as e:
-            print(f"  Geocoding error: {e}")
+            print(f"  Nominatim error: {e}")
 
     print(f"  Falling back to city center for: {location_text}")
     return CITIES[city]["center"]
