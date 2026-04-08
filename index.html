@@ -163,6 +163,7 @@ html, body {
 .chip[data-f="all"].active  { background: var(--gold); }
 .chip[data-f="p1"].active   { background: var(--red); }
 .chip[data-f="p2"].active   { background: var(--amber); }
+.chip[data-f="medical"].active { background: var(--blue); }
 .chip[data-f="gang"].active { background: var(--gang); }
 
 /* ── MAIN LAYOUT ── */
@@ -220,7 +221,8 @@ html, body {
 }
 .badge-p1 { background:var(--red-dim);   color:var(--red);   border:1px solid var(--red-bdr); }
 .badge-p2 { background:var(--amber-dim); color:var(--amber); border:1px solid var(--amber-bdr); }
-
+.badge-medical { background:var(--blue-dim); color:var(--blue); border:1px solid var(--blue-bdr); }
+  
 .gang-tag {
   font-family:var(--mono); font-size:9px; font-weight:700;
   color:var(--gang); background:var(--gang-dim); border:1px solid var(--gang-bdr);
@@ -378,6 +380,7 @@ const CONFIG = {
   <div class="chip active" data-f="all">All</div>
   <div class="chip" data-f="p1">Priority 1 — Immediate</div>
   <div class="chip" data-f="p2">Priority 2 — Urgent</div>
+  <div class="chip" data-f="medical">Medical Emergency</div>
   <div class="chip" data-f="gang">⚠ Gang Hotspot</div>
 </div>
 
@@ -465,11 +468,12 @@ const S = {
 
 /* ── BADGE CONFIG ── */
 const BADGE = {
-  p1: { cls:"badge-p1", label:"Priority 1 — Immediate Response" },
-  p2: { cls:"badge-p2", label:"Priority 2 — Urgent"             },
+  p1:      { cls:"badge-p1",      label:"Priority 1 — Immediate Response" },
+  p2:      { cls:"badge-p2",      label:"Priority 2 — Urgent"             },
+  medical: { cls:"badge-medical", label:"Medical Emergency"               },
 };
 
-const PIN_COL = { p1:"#ff3d4f", p2:"#f59e0b" };
+cconst PIN_COL = { p1:"#ff3d4f", p2:"#f59e0b", medical:"#3d9eff" };
 
 /* ── HAVERSINE DISTANCE (miles) ── */
 function haversine(lat1, lng1, lat2, lng2) {
