@@ -1,9 +1,9 @@
 """
 Hood Brief — Scanner Pipeline
 Memphis, TN
-Includes: 10-code translation, Geocodio + Nominatim geocoding,
-          intersection handling, gang hotspot detection
-P1 and P2 incidents only
+Includes: 10-code translation, geocoding (Google + Geocodio + Nominatim),
+          intersection handling, gang hotspot detection, MPD station tagging
+P1 and P2 and Medical incidents only
 """
 
 import os
@@ -34,6 +34,49 @@ CHUNK_SECONDS = 30
 MAX_RETRIES   = 3
 
 client = OpenAI(api_key=OPENAI_API_KEY)
+
+# ══════════════════════════════════════════════════════════════════
+#  MPD STATION DETECTION FROM UNIT NUMBER
+#
+#  Memphis PD unit prefixes identify the responding station.
+#  We scan the unit field for these prefixes and tag the incident.
+# ══════════════════════════════════════════════════════════════════
+
+MPD_STATIONS = [
+    # Each entry: (regex pattern, station name)
+    # Order matters — more specific patterns first
+    (r'\bAP\d',     "Appling Farms Station"),
+    (r'\bAU\d',     "Austin Peay Station"),
+    (r'\bMM\d',     "Mt. Moriah Station"),
+    (r'\bNM\d',     "North Main Station"),
+    (r'\bRW\d',     "Ridgeway Station"),
+    (r'\bA\d',      "Airways Station"),
+    (r'\bC\d',      "Crump Station"),
+    (r'\bR\d',      "Raines Station"),
+    (r'\bT\d',      "Tillman Station"),
+    # Also match written station names in transcript
+    (r'appling',    "Appling Farms Station"),
+    (r'austin peay',"Austin Peay Station"),
+    (r'mt\.? moriah',"Mt. Moriah Station"),
+    (r'north main', "North Main Station"),
+    (r'ridgeway',   "Ridgeway Station"),
+    (r'airways',    "Airways Station"),
+    (r'crump',      "Crump Station"),
+    (r'raines',     "Raines Station"),
+    (r'tillman',    "Tillman Station"),
+]
+
+def detect_station(unit_text, transcript=""):
+    """
+    Detect the MPD station from unit designations or transcript text.
+    Returns station name string or None if not detected.
+    """
+    search_text = f"{unit_text or ''} {transcript or ''}".lower()
+    for pattern, station in MPD_STATIONS:
+        if re.search(pattern, search_text, re.IGNORECASE):
+            return station
+    return None
+
 
 # ══════════════════════════════════════════════════════════════════
 #  GANG HOTSPOT ZONES — MEMPHIS
@@ -287,6 +330,56 @@ def translate_ten_codes(transcript, city):
 
 
 # ══════════════════════════════════════════════════════════════════
+#  MEMPHIS LANDMARK LOOKUP TABLE
+# ══════════════════════════════════════════════════════════════════
+
+MEMPHIS_LANDMARKS = {
+    "super low":             (35.1281, -90.0372),
+    "autozone park":         (35.1467, -90.0490),
+    "liberty park":          (35.1189, -90.0528),
+    "shelby farms":          (35.1503, -89.8724),
+    "overton park":          (35.1489, -89.9841),
+    "mud island":            (35.1584, -90.0565),
+    "beale street":          (35.1396, -90.0502),
+    "graceland":             (35.0472, -90.0232),
+    "wolfchase":             (35.2018, -89.8241),
+    "eastgate":              (35.1186, -89.8812),
+    "hickory ridge mall":    (35.0556, -89.9268),
+    "oak court":             (35.1180, -89.9506),
+    "poplar plaza":          (35.1279, -89.9503),
+    "southland mall":        (35.0281, -90.0187),
+    "highland strip":        (35.1283, -89.9387),
+    "cooper young":          (35.1175, -89.9837),
+    "broad avenue":          (35.1503, -89.9641),
+    "downtown memphis":      (35.1495, -90.0490),
+    "medical district":      (35.1389, -90.0367),
+    "methodist hospital":    (35.1389, -90.0367),
+    "regional medical":      (35.1389, -90.0367),
+    "the med":               (35.1389, -90.0367),
+    "lebonheur":             (35.1503, -90.0367),
+    "st jude":               (35.1516, -90.0412),
+    "u of m":                (35.1189, -89.9387),
+    "university of memphis": (35.1189, -89.9387),
+    "memphis international": (35.0424, -89.9768),
+    "memphis airport":       (35.0424, -89.9768),
+    "fedex forum":           (35.1382, -90.0504),
+    "pink palace":           (35.1189, -89.9503),
+    "stax museum":           (35.1083, -90.0187),
+    "national civil rights": (35.1346, -90.0587),
+}
+
+def check_landmark(location_text):
+    if not location_text:
+        return None
+    text = location_text.lower()
+    for keyword, coords in MEMPHIS_LANDMARKS.items():
+        if keyword in text:
+            print(f"  Landmark match: '{keyword}' -> {coords}")
+            return coords
+    return None
+
+
+# ══════════════════════════════════════════════════════════════════
 #  GEOCODING
 # ══════════════════════════════════════════════════════════════════
 
@@ -294,64 +387,98 @@ def geocode_location(location_text, city):
     if not location_text:
         return CITIES[city]["center"]
 
-    city_info  = CITIES[city]
-    city_label = city_info["label"]
+    # Step 1: Landmark lookup
+    landmark = check_landmark(location_text)
+    if landmark:
+        return landmark
 
-  # Build a list of location queries to try in order
+    city_info    = CITIES[city]
+    city_label   = city_info["label"]
+    google_key   = os.environ.get("GOOGLE_MAPS_KEY", "")
+    geocodio_key = os.environ.get("GEOCODIO_KEY", "")
+
+    # Build query list for intersection handling
     location_queries = [location_text]
 
-    # Pattern 1: Numbered address with cross street
-    # e.g. "2704 Perkins Rd and American Way"
     cross_match = re.match(
         r'^(\d+\s+)([^,]+?)\s+and\s+(.+)$',
-        location_text.strip(),
-        re.IGNORECASE
+        location_text.strip(), re.IGNORECASE
     )
-
-    # Pattern 2: Pure intersection with no street number
-    # e.g. "Summer and Stratford" or "Summer Ave and Stratford"
     intersection_match = re.match(
         r'^([^,\d][^,]+?)\s+and\s+([^,]+)$',
-        location_text.strip(),
-        re.IGNORECASE
+        location_text.strip(), re.IGNORECASE
     ) if not cross_match else None
 
     if cross_match:
         number       = cross_match.group(1).strip()
         street1      = cross_match.group(2).strip()
         street2      = cross_match.group(3).strip()
-        intersection = f"{street1} and {street2}"
-        numbered     = f"{number} {street1}"
-        location_queries = [
-            intersection,
-            numbered,
-            street1,
-        ]
-        print(f"  Numbered intersection detected — trying: {location_queries}")
-
+        location_queries = [f"{street1} and {street2}", f"{number} {street1}", street1]
+        print(f"  Numbered intersection — trying: {location_queries}")
     elif intersection_match:
         street1 = intersection_match.group(1).strip()
         street2 = intersection_match.group(2).strip()
-        location_queries = [
-            f"{street1} and {street2}",
-            street1,
-            street2,
-        ]
-        print(f"  Pure intersection detected — trying: {location_queries}")
+        location_queries = [f"{street1} and {street2}", street1, street2]
+        print(f"  Pure intersection — trying: {location_queries}")
 
-    # Step 1: Geocodio — excellent US address coverage,
-    # 2,500 free requests/day, no credit card required
-    geocodio_key = os.environ.get("GEOCODIO_KEY", "")
+    def in_city(lat, lng):
+        clat, clng = city_info["center"]
+        return abs(lat - clat) + abs(lng - clng) < 2.0
+
+    # Step 2: Google Places API — best for named locations
+    if google_key:
+        try:
+            r = requests.get(
+                "https://maps.googleapis.com/maps/api/place/findplacefromtext/json",
+                params={
+                    "input":        f"{location_text}, {city_label}",
+                    "inputtype":    "textquery",
+                    "fields":       "geometry,name,formatted_address",
+                    "locationbias": f"circle:30000@{city_info['center'][0]},{city_info['center'][1]}",
+                    "key":          google_key,
+                },
+                timeout=10,
+            )
+            data = r.json()
+            if data.get("status") == "OK" and data.get("candidates"):
+                loc = data["candidates"][0]["geometry"]["location"]
+                lat, lng = float(loc["lat"]), float(loc["lng"])
+                if in_city(lat, lng):
+                    print(f"  Geocoded (Places): {location_text} -> {lat}, {lng}")
+                    return lat, lng
+            else:
+                print(f"  Places API: {data.get('status')} for: {location_text}")
+        except Exception as e:
+            print(f"  Places API error: {e}")
+
+    # Step 3: Google Geocoding API
+    if google_key:
+        for query in location_queries:
+            try:
+                r = requests.get(
+                    "https://maps.googleapis.com/maps/api/geocode/json",
+                    params={"address": f"{query}, {city_label}", "key": google_key},
+                    timeout=10,
+                )
+                data = r.json()
+                if data.get("status") == "OK":
+                    loc = data["results"][0]["geometry"]["location"]
+                    lat, lng = float(loc["lat"]), float(loc["lng"])
+                    if in_city(lat, lng):
+                        print(f"  Geocoded (Google): {query} -> {lat}, {lng}")
+                        return lat, lng
+                else:
+                    print(f"  Google geocode: {data.get('status')} for: {query}")
+            except Exception as e:
+                print(f"  Google geocoding error: {e}")
+
+    # Step 4: Geocodio
     if geocodio_key:
         for query in location_queries:
             try:
                 r = requests.get(
                     "https://api.geocod.io/v1.7/geocode",
-                    params={
-                        "q":       f"{query}, {city_label}",
-                        "api_key": geocodio_key,
-                        "limit":   1,
-                    },
+                    params={"q": f"{query}, {city_label}", "api_key": geocodio_key, "limit": 1},
                     timeout=10,
                 )
                 data    = r.json()
@@ -359,45 +486,30 @@ def geocode_location(location_text, city):
                 if results:
                     loc = results[0]["location"]
                     lat, lng = float(loc["lat"]), float(loc["lng"])
-                    center_lat, center_lng = city_info["center"]
-                    if abs(lat - center_lat) + abs(lng - center_lng) < 2.0:
+                    if in_city(lat, lng):
                         print(f"  Geocoded (Geocodio): {query} -> {lat}, {lng}")
                         return lat, lng
-                    else:
-                        print(f"  Geocodio result too far from city: {lat}, {lng}")
                 else:
                     print(f"  Geocodio: no results for: {query}")
             except Exception as e:
                 print(f"  Geocodio error: {e}")
 
-    # Step 2: Nominatim fallback — free, no key needed
+    # Step 5: Nominatim fallback
     for query in location_queries:
         try:
             time.sleep(1)
             r = requests.get(
                 "https://nominatim.openstreetmap.org/search",
-                params={
-                    "q":      f"{query}, {city_label}",
-                    "format": "json",
-                    "limit":  1,
-                },
-                headers={
-                    "User-Agent": "HoodBrief/1.0 (hoodbrief@proton.me)",
-                    "Accept":     "application/json",
-                },
+                params={"q": f"{query}, {city_label}", "format": "json", "limit": 1},
+                headers={"User-Agent": "HoodBrief/1.0 (hoodbrief@proton.me)", "Accept": "application/json"},
                 timeout=10,
             )
             results = r.json()
             if results:
                 lat, lng = float(results[0]["lat"]), float(results[0]["lon"])
-                center_lat, center_lng = city_info["center"]
-                if abs(lat - center_lat) + abs(lng - center_lng) < 2.0:
+                if in_city(lat, lng):
                     print(f"  Geocoded (Nominatim): {query} -> {lat}, {lng}")
                     return lat, lng
-                else:
-                    print(f"  Nominatim result too far from city: {lat}, {lng}")
-            else:
-                print(f"  Nominatim: no results for: {query}")
         except Exception as e:
             print(f"  Nominatim error: {e}")
 
@@ -473,7 +585,7 @@ Otherwise return:
   "title": "<6 words max incident description>",
   "location": "<street address or intersection>",
   "priority": "<one of: p1, p2, p3, medical, fire>",
-  "unit": "<unit numbers mentioned>",
+  "unit": "<unit numbers or designations mentioned>",
   "lat": <estimated latitude float>,
   "lng": <estimated longitude float>
 }}
@@ -510,7 +622,8 @@ For lat/lng use city center as fallback: {center_lat}, {center_lng}"""
 #  SUPABASE WRITER
 # ══════════════════════════════════════════════════════════════════
 
-def save_incident(incident, city, transcript_original, transcript_translated, gang_hotspot, gang_zone):
+def save_incident(incident, city, transcript_original, transcript_translated,
+                  gang_hotspot, gang_zone, station):
     headers = {
         "apikey":        SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -529,6 +642,7 @@ def save_incident(incident, city, transcript_original, transcript_translated, ga
         "transcript_raw": transcript_original,
         "gang_hotspot":   gang_hotspot,
         "gang_zone":      gang_zone,
+        "station":        station,
     }
     r = requests.post(
         f"{SUPABASE_URL}/rest/v1/incidents",
@@ -578,7 +692,7 @@ def run_city(city):
                 print(f"[{label}] No incident detected - skipping")
                 continue
 
-            # Step 5: Only save P1 and P2 incidents
+            # Step 5: Filter by priority — P1, P2, and Medical only
             priority = parsed.get("priority", "")
             if priority not in ("p1", "p2", "medical"):
                 print(f"[{label}] Skipping {priority.upper()} incident - below threshold")
@@ -590,24 +704,33 @@ def run_city(city):
             parsed["lat"] = lat
             parsed["lng"] = lng
 
-            # Step 7: Check gang hotspot
+            # Step 7: Detect MPD station from unit number
+            unit    = parsed.get("unit", "")
+            station = detect_station(unit, transcript_translated)
+            if station:
+                print(f"  Station detected: {station}")
+
+            # Step 8: Check gang hotspot
             gang_hotspot, gang_zone = check_gang_hotspot(
                 location, parsed.get("title"), city
             )
             if gang_hotspot:
-                print(f"  ⚠ Gang hotspot detected: {gang_zone}")
+                print(f"  ⚠ Gang hotspot: {gang_zone}")
 
-            # Step 8: Save to Supabase
+            # Step 9: Save to Supabase
             save_incident(
                 parsed, city,
                 transcript_raw, transcript_translated,
-                gang_hotspot, gang_zone
+                gang_hotspot, gang_zone, station
             )
-            hotspot_tag = f" ⚠ {gang_zone}" if gang_hotspot else ""
+            tags = []
+            if station:     tags.append(station)
+            if gang_hotspot: tags.append(f"⚠ {gang_zone}")
+            tag_str = f" [{', '.join(tags)}]" if tags else ""
             print(
-                f"[{label}] Saved: [{parsed.get('priority','?').upper()}] "
+                f"[{label}] Saved: [{priority.upper()}] "
                 f"{parsed.get('title','?')} @ {parsed.get('location','?')}"
-                f"{hotspot_tag}"
+                f"{tag_str}"
             )
 
         except requests.exceptions.ConnectionError:
@@ -633,20 +756,16 @@ if __name__ == "__main__":
     print("╚══════════════════════════════════════╝")
 
     errors = []
-    if not OPENAI_API_KEY:
-        errors.append("OPENAI_API_KEY not set")
-    if not SUPABASE_URL:
-        errors.append("SUPABASE_URL not set")
-    if not SUPABASE_KEY:
-        errors.append("SUPABASE_KEY not set")
+    if not OPENAI_API_KEY:  errors.append("OPENAI_API_KEY not set")
+    if not SUPABASE_URL:    errors.append("SUPABASE_URL not set")
+    if not SUPABASE_KEY:    errors.append("SUPABASE_KEY not set")
     for city, info in CITIES.items():
         if not info["stream_url"]:
             errors.append(f"{city.upper()}_STREAM_URL not set")
 
     if errors:
         print("\nMissing configuration:")
-        for e in errors:
-            print(f"  - {e}")
+        for e in errors: print(f"  - {e}")
         exit(1)
 
     threads = []
