@@ -949,7 +949,40 @@ async function boot() {
     document.querySelector(".spinner").style.display = "none";
   }
 }
+/* ── POLLING FALLBACK ── */
+/* Checks for new incidents every 30 seconds in case WebSocket drops */
+async function pollForUpdates() {
+  if (CONFIG.SUPABASE_URL.includes("YOUR_")) return;
+  try {
+    const latest = S.incidents.length > 0
+      ? S.incidents[0].created_at
+      : new Date(Date.now() - 3600000).toISOString();
 
+    const encoded = encodeURIComponent(latest);
+    const rows = await SB.query(
+      `incidents?order=created_at.desc&created_at=gt.${encoded}&limit=50`
+    );
+
+    if (rows.length > 0) {
+      console.log(`[Poll] Found ${rows.length} new incident(s)`);
+      rows.forEach(newRow => {
+        // Only add if not already in state
+        if (!S.incidents.find(i => i.id === newRow.id)) {
+          newRow.lat = newRow.lat ? parseFloat(newRow.lat) : null;
+          newRow.lng = newRow.lng ? parseFloat(newRow.lng) : null;
+          S.incidents.unshift(newRow);
+          showToast(newRow);
+        }
+      });
+      if (S.incidents.length > 600) S.incidents = S.incidents.slice(0, 600);
+      renderFeed();
+    }
+  } catch(err) {
+    console.log("[Poll] Error:", err.message);
+  }
+}
+
+setInterval(pollForUpdates, 30000);
 boot();
 </script>
 </body>
