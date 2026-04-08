@@ -50,93 +50,206 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 GANG_ZONES = {
     "memphis": [
         {
-            "zone": "Tate & Boyd Area — AOB Gang Hub",
-            "keywords": ["tate", "boyd", "all off the blade", "aob"],
-        },
-        {
             "zone": "Orange Mound — High Gang Activity",
-            "keywords": ["orange mound", "mound"],
-        },
-        {
-            "zone": "South Memphis — High Gang Activity",
-            "keywords": ["south memphis", "s memphis", "mississippi river", "e mclemore",
-                         "w mclemore", "horn lake", "elvis presley blvd", "south third"],
+            "keywords": [
+                "park ave", "park avenue", "deadrick", "spottswood",
+                "semmes", "lamar ave", "kimball ave", "airways blvd",
+                "southern ave", "goodwyn", "alston", "macon rd",
+                "macon road", "given ave", "given avenue",
+            ],
         },
         {
             "zone": "Frayser — High Gang Activity",
-            "keywords": ["frayser", "watkins", "north watkins", "n watkins",
-                         "vollintine", "harvell", "overton crossing"],
+            "keywords": [
+                "frayser blvd", "frayser boulevard", "n watkins",
+                "north watkins", "thomas st", "thomas street",
+                "hwy 51", "highway 51", "vollintine", "harvell",
+                "overton crossing", "rangeline", "range line",
+                "rugby", "snowden", "josephine", "dellwood",
+                "frayser", "hawkins mill",
+            ],
+        },
+        {
+            "zone": "South Memphis — High Gang Activity",
+            "keywords": [
+                "e mclemore", "w mclemore", "mclemore ave",
+                "elvis presley blvd", "s third st", "south third",
+                "horn lake rd", "horn lake road", "s parkway",
+                "south parkway", "florida st", "florida street",
+                "trigg ave", "trigg avenue", "person ave",
+                "mississippi blvd", "castalia st",
+            ],
         },
         {
             "zone": "Hickory Hill — High Gang Activity",
-            "keywords": ["hickory hill", "hickory ridge", "knight arnold",
-                         "shelby dr", "shelby drive", "lamar"],
+            "keywords": [
+                "hickory hill", "hickory ridge",
+                "knight arnold rd", "knight arnold road",
+                "shelby dr", "shelby drive", "germantown rd",
+                "germantown road", "ridgeway rd", "ridgeway road",
+                "mendenhall", "e shelby dr",
+            ],
         },
         {
-            "zone": "Third Street Corridor — Gang Activity",
-            "keywords": ["third street", "3rd street", "parkway village",
-                         "n third", "n 3rd"],
+            "zone": "Binghampton — High Gang Activity",
+            "keywords": [
+                "binghampton", "lester st", "lester street",
+                "tillman st", "tillman street", "broad ave",
+                "broad avenue", "n graham", "graham st",
+                "trezevant", "a w willis", "aw willis",
+            ],
+        },
+        {
+            "zone": "North Memphis — High Gang Activity",
+            "keywords": [
+                "smokey city", "klondike", "hyde park",
+                "hollywood", "n hollywood", "north hollywood",
+                "jackson ave", "jackson avenue", "n main",
+                "auction ave", "brinkley", "manassas",
+                "n second", "n 2nd", "joseph", "chelsea ave",
+            ],
+        },
+        {
+            "zone": "Whitehaven — High Gang Activity",
+            "keywords": [
+                "whitehaven", "white haven", "s third",
+                "brooks rd", "brooks road", "shelby dr south",
+                "american way", "kerr ave", "kerr avenue",
+                "swinnea", "tchulahoma", "get well rd",
+            ],
+        },
+        {
+            "zone": "Tate & Boyd Area — AOB Gang Hub",
+            "keywords": [
+                "tate ave", "tate street", "boyd st",
+                "boyd street", "boyd ave", "n tate",
+            ],
+        },
+        {
+            "zone": "Parkway Village — High Gang Activity",
+            "keywords": [
+                "parkway village", "e shelby dr",
+                "knight arnold", "lamar ave east",
+                "presidents island", "millbranch",
+            ],
+        },
+        {
+            "zone": "Westwood — High Gang Activity",
+            "keywords": [
+                "westwood", "walker homes", "person ave",
+                "s westwood", "westhaven", "s parkway west",
+                "s cooper", "cooper street south",
+            ],
         },
     ],
     "baltimore": [
         {
             "zone": "Sandtown-Winchester — High Gang Activity",
-            "keywords": ["sandtown", "winchester", "north ave", "north avenue",
-                         "baker street", "stricker", "gilmor"],
+            "keywords": [
+                "sandtown", "winchester st", "gilmor st",
+                "gilmor street", "stricker st", "stricker street",
+                "baker st sandtown", "mosher st", "mosher street",
+                "fremont ave", "fremont avenue", "carey st",
+                "carey street", "w north ave", "west north ave",
+                "pennsylvania ave west", "w pennsylvania",
+            ],
         },
         {
             "zone": "Cherry Hill — High Gang Activity",
-            "keywords": ["cherry hill", "cherry hill rd", "cherry hill road",
-                         "seabury", "benson", "round road"],
-        },
-        {
-            "zone": "Greenmount East — High Gang Activity",
-            "keywords": ["greenmount", "broadway east", "federal st", "federal street",
-                         "chase street", "hoffman street", "aisquith"],
+            "keywords": [
+                "cherry hill rd", "cherry hill road",
+                "cherry hill drive", "seabury rd", "seabury road",
+                "round road", "cherry hill", "cherry hill blvd",
+                "benson ave cherry", "reedbird ave",
+            ],
         },
         {
             "zone": "Broadway East — High Gang Activity",
-            "keywords": ["broadway east", "broadway", "lafayette", "biddle",
-                         "eager street", "mcelderry"],
+            "keywords": [
+                "broadway east", "e broadway", "mcelderry st",
+                "mcelderry street", "eager st east", "biddle st",
+                "biddle street", "federal st east", "federal street east",
+                "gay st", "gay street", "orleans st",
+                "aisquith st", "aisquith street",
+            ],
+        },
+        {
+            "zone": "Greenmount East — High Gang Activity",
+            "keywords": [
+                "greenmount ave", "greenmount avenue",
+                "greenmount east", "hoffman st", "hoffman street",
+                "brentwood ave", "brentwood avenue",
+                "e 25th st", "e 26th st", "e 27th st",
+                "e 28th st", "e 29th st", "e 30th st",
+                "e 33rd st", "e 34th st",
+            ],
         },
         {
             "zone": "Upton & Druid Heights — High Gang Activity",
-            "keywords": ["upton", "druid heights", "druid hill", "madison ave",
-                         "madison avenue", "mcculloh", "dolphin street"],
+            "keywords": [
+                "druid heights", "druid hill ave",
+                "druid hill avenue", "mcculloh st",
+                "mcculloh street", "dolphin st", "dolphin street",
+                "upton", "madison ave west", "w madison ave",
+                "pennsylvania ave", "w north ave upton",
+                "w lafayette ave", "lafayett ave west",
+            ],
         },
         {
             "zone": "Southwest Baltimore — Operation Tornado Alley",
-            "keywords": ["pratt street", "lemon street", "millington",
-                         "edmondson", "sw baltimore", "southwest baltimore"],
-        },
-        {
-            "zone": "Inner Harbor — Law Enforcement Focus Area",
-            "keywords": ["inner harbor", "harbor", "pratt st", "light street",
-                         "light st", "calvert street"],
+            "keywords": [
+                "millington ave", "millington avenue",
+                "edmondson ave", "edmondson avenue",
+                "lemon st baltimore", "lemon street baltimore",
+                "pratt st southwest", "w pratt st",
+                "sw baltimore", "hawthorn rd",
+                "morley st", "morley street",
+                "brunt st", "brunt street",
+            ],
         },
         {
             "zone": "Fells Point — Law Enforcement Focus Area",
-            "keywords": ["fells point", "fell's point", "thames street",
-                         "broadway pier", "upper fells"],
+            "keywords": [
+                "fells point", "fell's point",
+                "thames st", "thames street",
+                "s broadway fells", "lancaster st",
+                "aliceanna st", "aliceanna street",
+                "s caroline", "caroline street south",
+            ],
         },
         {
-            "zone": "Canton Square — Law Enforcement Focus Area",
-            "keywords": ["canton", "canton square", "o'donnell", "odonnell",
-                         "boston street"],
+            "zone": "Patterson Park — MS-13 Activity",
+            "keywords": [
+                "patterson park", "highlandtown",
+                "conkling st", "conkling street",
+                "linwood ave", "linwood avenue",
+                "e fairmount ave", "fairmount avenue",
+                "eastern ave highlandtown", "s eaton st",
+                "s kenwood ave", "kenwood avenue south",
+            ],
         },
         {
-            "zone": "Federal Hill — Law Enforcement Focus Area",
-            "keywords": ["federal hill", "cross street", "light st", "covington",
-                         "warren avenue"],
+            "zone": "Pimlico — High Gang Activity",
+            "keywords": [
+                "pimlico", "reisterstown rd", "reisterstown road",
+                "quantico ave", "quantico avenue",
+                "w cold spring", "cold spring lane west",
+                "violet ave", "violet avenue",
+                "cylburn ave", "cylburn avenue",
+            ],
         },
         {
-            "zone": "Patterson Park / Highlandtown — MS-13 Activity",
-            "keywords": ["patterson park", "highlandtown", "eastern ave",
-                         "eastern avenue", "conkling", "linwood"],
+            "zone": "Park Heights — High Gang Activity",
+            "keywords": [
+                "park heights", "park heights ave",
+                "park heights avenue", "belvedere ave",
+                "belvedere avenue", "wylie ave",
+                "garrison blvd", "garrison boulevard",
+                "w cold spring lane", "slade ave",
+            ],
         },
     ],
 }
-
 
 # ══════════════════════════════════════════════════════════════════
 #  GANG HOTSPOT DETECTOR
