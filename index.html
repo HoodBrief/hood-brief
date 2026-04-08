@@ -960,8 +960,8 @@ async function pollForUpdates() {
 
     const encoded = encodeURIComponent(latest);
     const rows = await SB.query(
-      `incidents?order=created_at.desc&created_at=gt.${encoded}&limit=50`
-    );
+  `incidents?order=created_at.desc&created_at=gt.${encoded}&limit=50&select=*`
+);
 
     if (rows.length > 0) {
       console.log(`[Poll] Found ${rows.length} new incident(s)`);
