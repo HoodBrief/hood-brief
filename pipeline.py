@@ -17,7 +17,8 @@ Features:
   • MPD station detection (coordinate bounding boxes)
   • Gang hotspot detection
   • Dispatcher call detection (WP units)
-  • Daily heatmap refresh from Memphis Open Data Hub
+  • Heatmap: static P1 points loaded into Supabase on startup
+  • Fugitive scraper: weekly pull from memphismostwanted.org
   • P1, P2, and Medical incidents only
 ─────────────────────────────────────────────────────────────────
 """
@@ -31,6 +32,7 @@ import threading
 import requests
 from datetime import datetime, timezone
 from openai import OpenAI
+from bs4 import BeautifulSoup
 
 # ══════════════════════════════════════════════════════════════════
 #  CONFIG
@@ -50,16 +52,463 @@ CITIES = {
 
 CHUNK_SECONDS            = 30
 MAX_RETRIES              = 3
-HEATMAP_REFRESH_INTERVAL = 86400   # 24 hours
+FUGITIVE_REFRESH_SECONDS = 604800  # 7 days
 
 client = OpenAI(api_key=OPENAI_API_KEY)
+
+# ══════════════════════════════════════════════════════════════════
+#  SUPABASE HELPERS
+# ══════════════════════════════════════════════════════════════════
+
+def sb_headers():
+    return {
+        "apikey":        SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type":  "application/json",
+        "Prefer":        "return=minimal",
+    }
+
+def sb_get(path, params=None):
+    r = requests.get(
+        f"{SUPABASE_URL}/rest/v1/{path}",
+        params=params,
+        headers={
+            "apikey":        SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+        },
+        timeout=10,
+    )
+    r.raise_for_status()
+    return r.json()
+
+def sb_post(path, data):
+    r = requests.post(
+        f"{SUPABASE_URL}/rest/v1/{path}",
+        json=data,
+        headers=sb_headers(),
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r
+
+def sb_delete(path):
+    r = requests.delete(
+        f"{SUPABASE_URL}/rest/v1/{path}",
+        headers=sb_headers(),
+        timeout=15,
+    )
+    r.raise_for_status()
+    return r
+
+
+# ══════════════════════════════════════════════════════════════════
+#  HEATMAP — STATIC P1 POINTS
+#  Source: MPD Public Safety Incidents GeoJSON (April 2026)
+#  Loaded once at startup into Supabase heatmap_points table
+#  (Live API at data.memphistn.gov is not accessible from Railway)
+# ══════════════════════════════════════════════════════════════════
+
+HEATMAP_STATIC_POINTS = [
+    {"lat":35.11,"lng":-90.065,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.134,"lng":-90.035,"category":"ROBBERY"},
+    {"lat":35.043,"lng":-89.861,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.245,"lng":-89.983,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.161,"lng":-89.954,"category":"ROBBERY"},
+    {"lat":35.028,"lng":-90.044,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.114,"lng":-90.028,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.094,"lng":-90.07,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.094,"lng":-90.07,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.175,"lng":-90.025,"category":"ROBBERY"},
+    {"lat":35.149,"lng":-89.916,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.138,"lng":-89.964,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.055,"lng":-90.021,"category":"ROBBERY"},
+    {"lat":35.106,"lng":-90.003,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.106,"lng":-90.003,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.145,"lng":-90.032,"category":"ROBBERY"},
+    {"lat":35.247,"lng":-89.977,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.107,"lng":-90.001,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.175,"lng":-89.926,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.155,"lng":-89.912,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.05,"lng":-90.005,"category":"ROBBERY"},
+    {"lat":35.109,"lng":-89.952,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.161,"lng":-89.796,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.134,"lng":-90.029,"category":"ROBBERY"},
+    {"lat":35.06,"lng":-90.079,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.145,"lng":-89.796,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.173,"lng":-89.784,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.133,"lng":-89.977,"category":"ROBBERY"},
+    {"lat":35.113,"lng":-90.026,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.06,"lng":-90.079,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.171,"lng":-89.946,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.239,"lng":-89.942,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.046,"lng":-90.081,"category":"ROBBERY"},
+    {"lat":35.024,"lng":-90.01,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.006,"lng":-90.006,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.139,"lng":-90.061,"category":"ROBBERY"},
+    {"lat":35.167,"lng":-90.027,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.211,"lng":-90.026,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.207,"lng":-89.995,"category":"ROBBERY"},
+    {"lat":35.231,"lng":-89.896,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.221,"lng":-89.974,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.167,"lng":-89.921,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.024,"lng":-90.01,"category":"ROBBERY"},
+    {"lat":35.064,"lng":-90.058,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.115,"lng":-89.97,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.234,"lng":-89.968,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.252,"lng":-89.936,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.074,"lng":-89.926,"category":"ROBBERY"},
+    {"lat":35.035,"lng":-90.004,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.109,"lng":-89.982,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.134,"lng":-90.029,"category":"ROBBERY"},
+    {"lat":35.22,"lng":-89.965,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.22,"lng":-89.946,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.12,"lng":-90.034,"category":"ROBBERY"},
+    {"lat":35.212,"lng":-90.026,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.143,"lng":-90.014,"category":"ROBBERY"},
+    {"lat":35.117,"lng":-90.05,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.096,"lng":-89.996,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.093,"lng":-90.067,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.108,"lng":-89.973,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.093,"lng":-90.038,"category":"ROBBERY"},
+    {"lat":35.094,"lng":-90.03,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.14,"lng":-90.054,"category":"ROBBERY"},
+    {"lat":35.059,"lng":-89.863,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.049,"lng":-89.827,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.093,"lng":-90.038,"category":"ROBBERY"},
+    {"lat":35.156,"lng":-89.783,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.173,"lng":-89.961,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.108,"lng":-89.973,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.17,"lng":-89.936,"category":"ROBBERY"},
+    {"lat":35.045,"lng":-89.874,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.104,"lng":-90.011,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.172,"lng":-89.792,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.093,"lng":-90.067,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.16,"lng":-90.016,"category":"ROBBERY"},
+    {"lat":35.117,"lng":-90.05,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.22,"lng":-89.926,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.187,"lng":-89.877,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.05,"lng":-89.798,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.094,"lng":-90.03,"category":"ROBBERY"},
+    {"lat":35.22,"lng":-89.926,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.243,"lng":-89.948,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.157,"lng":-90.033,"category":"ROBBERY"},
+    {"lat":35.204,"lng":-89.978,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.177,"lng":-89.942,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.06,"lng":-89.926,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.061,"lng":-89.848,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.111,"lng":-89.967,"category":"ROBBERY"},
+    {"lat":35.227,"lng":-90.003,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.06,"lng":-89.856,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.051,"lng":-90.013,"category":"ROBBERY"},
+    {"lat":35.088,"lng":-90.066,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.214,"lng":-89.96,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.072,"lng":-89.868,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.082,"lng":-89.889,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.096,"lng":-89.975,"category":"ROBBERY"},
+    {"lat":35.188,"lng":-89.798,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.069,"lng":-89.934,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.181,"lng":-89.934,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.115,"lng":-90.021,"category":"ROBBERY"},
+    {"lat":35.072,"lng":-89.868,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.007,"lng":-90.072,"category":"ROBBERY"},
+    {"lat":35.027,"lng":-89.871,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.069,"lng":-89.934,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.065,"lng":-89.905,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.101,"lng":-90.036,"category":"ROBBERY"},
+    {"lat":35.213,"lng":-89.922,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.113,"lng":-89.947,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.057,"lng":-89.93,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.021,"lng":-90.043,"category":"ROBBERY"},
+    {"lat":35.046,"lng":-90.082,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.069,"lng":-89.954,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.065,"lng":-89.905,"category":"ROBBERY"},
+    {"lat":35.059,"lng":-89.863,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.213,"lng":-89.922,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.204,"lng":-89.978,"category":"ROBBERY"},
+    {"lat":35.007,"lng":-90.072,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.069,"lng":-89.954,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.06,"lng":-89.926,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.059,"lng":-89.863,"category":"ROBBERY"},
+    {"lat":35.06,"lng":-89.856,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.172,"lng":-89.792,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.046,"lng":-90.082,"category":"ROBBERY"},
+    {"lat":35.102,"lng":-90.035,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.044,"lng":-89.885,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.243,"lng":-89.948,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.082,"lng":-89.889,"category":"ROBBERY"},
+    {"lat":35.096,"lng":-89.975,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.113,"lng":-89.947,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.035,"lng":-90.004,"category":"HOMICIDE"},
+    {"lat":35.157,"lng":-90.033,"category":"HOMICIDE"},
+    {"lat":35.187,"lng":-89.877,"category":"KIDNAPPING/ABDUCTION"},
+    {"lat":35.082,"lng":-89.889,"category":"KIDNAPPING/ABDUCTION"},
+]
+
+def load_heatmap():
+    """Load static P1 heatmap points into Supabase on startup — only if empty."""
+    print("[Heatmap] Checking heatmap_points table...")
+    try:
+        existing = sb_get("heatmap_points", params={"select": "id", "limit": 1})
+        if existing and len(existing) > 0:
+            print(f"[Heatmap] Table already populated — skipping reload")
+            return
+        # Insert all points
+        inserted = 0
+        for i in range(0, len(HEATMAP_STATIC_POINTS), 500):
+            batch = HEATMAP_STATIC_POINTS[i:i+500]
+            sb_post("heatmap_points", batch)
+            inserted += len(batch)
+        print(f"[Heatmap] ✅ Loaded {inserted} P1 points into Supabase")
+    except Exception as e:
+        print(f"[Heatmap] Error: {e}")
+
+
+# ══════════════════════════════════════════════════════════════════
+#  FUGITIVE SCRAPER
+#  Scrapes memphismostwanted.org weekly
+#  Geocodes last known addresses and saves to Supabase fugitives table
+# ══════════════════════════════════════════════════════════════════
+
+CRIMESTOPPERS_URL = "https://www.memphismostwanted.org/"
+
+def geocode_fugitive_address(address_text):
+    """
+    Geocode a fugitive's last known address.
+    Tries 911 DB first, then Google, then Nominatim.
+    Returns (lat, lng) or None if not found or outside region.
+    """
+    if not address_text or "unknown" in address_text.lower() or "at large" in address_text.lower():
+        return None
+
+    # Normalize — extract just the street address part before city/state
+    # e.g. "1234 Main St in Memphis, TN 38103" -> "1234 Main St"
+    clean = re.sub(r'\s+in\s+.+$', '', address_text, flags=re.IGNORECASE).strip()
+    clean_upper = clean.upper()
+
+    def in_region(lat, lng):
+        # Accept Memphis and surrounding Shelby County area
+        return 34.9 <= lat <= 35.4 and -90.3 <= lng <= -89.6
+
+    # Step 1: 911 database
+    try:
+        rows = sb_get(
+            "memphis_addresses",
+            params={"address": f"eq.{clean_upper}", "select": "lat,lng", "limit": 1}
+        )
+        if rows:
+            lat, lng = float(rows[0]['lat']), float(rows[0]['lng'])
+            if in_region(lat, lng):
+                print(f"  [Fugitive] 911 DB: {clean_upper} -> {lat}, {lng}")
+                return lat, lng
+    except Exception as e:
+        print(f"  [Fugitive] 911 DB error: {e}")
+
+    # Step 2: Google Geocoding
+    google_key = os.environ.get("GOOGLE_MAPS_KEY", "")
+    if google_key:
+        try:
+            r = requests.get(
+                "https://maps.googleapis.com/maps/api/geocode/json",
+                params={"address": f"{clean}, Memphis, TN", "key": google_key},
+                timeout=10,
+            )
+            data = r.json()
+            if data.get("status") == "OK":
+                loc = data["results"][0]["geometry"]["location"]
+                lat, lng = float(loc["lat"]), float(loc["lng"])
+                if in_region(lat, lng):
+                    print(f"  [Fugitive] Google: {clean} -> {lat}, {lng}")
+                    return lat, lng
+        except Exception as e:
+            print(f"  [Fugitive] Google error: {e}")
+
+    # Step 3: Nominatim
+    try:
+        time.sleep(1)
+        r = requests.get(
+            "https://nominatim.openstreetmap.org/search",
+            params={"q": f"{clean}, Memphis, TN", "format": "json", "limit": 1},
+            headers={"User-Agent": "HoodBrief/1.0 (hoodbrief@proton.me)"},
+            timeout=10,
+        )
+        results = r.json()
+        if results:
+            lat, lng = float(results[0]["lat"]), float(results[0]["lon"])
+            if in_region(lat, lng):
+                print(f"  [Fugitive] Nominatim: {clean} -> {lat}, {lng}")
+                return lat, lng
+    except Exception as e:
+        print(f"  [Fugitive] Nominatim error: {e}")
+
+    print(f"  [Fugitive] Could not geocode: {address_text}")
+    return None
+
+
+def parse_fugitive_post(post_html):
+    """
+    Parse a single CrimeStoppers weekly post and extract fugitive records.
+    Returns list of dicts with name, dob, charges, address, photo_url, warrant_num.
+    """
+    fugitives = []
+    soup = BeautifulSoup(post_html, "html.parser")
+
+    # Each fugitive is separated by <hr> tags
+    # Structure: img -> bold name, DOB line, Wanted for line, Last Known Address line, Warrant line
+    content = soup.find("div", class_="entry-content") or soup
+
+    # Split on <hr> tags to get individual fugitive blocks
+    blocks = []
+    current = []
+    for elem in content.children:
+        tag = getattr(elem, 'name', None)
+        if tag == 'hr':
+            if current:
+                blocks.append(current)
+                current = []
+        else:
+            current.append(elem)
+    if current:
+        blocks.append(current)
+
+    for block in blocks:
+        try:
+            block_soup = BeautifulSoup(
+                "".join(str(e) for e in block), "html.parser"
+            )
+            text = block_soup.get_text(" ", strip=True)
+
+            # Extract photo URL
+            img = block_soup.find("img")
+            photo_url = img.get("src", "") if img else ""
+
+            # Extract name — first bold text
+            bold = block_soup.find("strong")
+            name = bold.get_text(strip=True) if bold else ""
+            if not name:
+                continue
+
+            # Extract DOB
+            dob_match = re.search(r'DOB[:\s]+(\d{2}/\d{2}/\d{4})', text)
+            dob = dob_match.group(1) if dob_match else ""
+
+            # Extract charges — "Wanted for X" section
+            charges_match = re.search(
+                r'Wanted for\s+(.+?)(?:Last Known Address|Warrant)', text,
+                re.IGNORECASE | re.DOTALL
+            )
+            charges = charges_match.group(1).strip().rstrip(',') if charges_match else ""
+
+            # Extract last known address
+            addr_match = re.search(
+                r'Last Known Address[:\s]+(.+?)(?:Warrant|$)', text,
+                re.IGNORECASE | re.DOTALL
+            )
+            address = addr_match.group(1).strip() if addr_match else ""
+
+            # Extract warrant number
+            warrant_match = re.search(r'Warrant\s*#?\s*(\d+)', text, re.IGNORECASE)
+            warrant_num = warrant_match.group(1) if warrant_match else ""
+
+            if name and (charges or warrant_num):
+                fugitives.append({
+                    "name":        name,
+                    "dob":         dob,
+                    "charges":     charges,
+                    "address":     address,
+                    "photo_url":   photo_url,
+                    "warrant_num": warrant_num,
+                })
+        except Exception as e:
+            print(f"  [Fugitive] Parse error on block: {e}")
+            continue
+
+    return fugitives
+
+
+def scrape_fugitives():
+    """
+    Scrape CrimeStoppers Most Wanted, geocode addresses,
+    and update the Supabase fugitives table.
+    """
+    print("[Fugitives] Starting weekly scrape from memphismostwanted.org...")
+    try:
+        r = requests.get(
+            CRIMESTOPPERS_URL,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; HoodBrief/1.0)"},
+            timeout=20,
+        )
+        r.raise_for_status()
+        soup = BeautifulSoup(r.text, "html.parser")
+
+        # Find all weekly posts
+        posts = soup.find_all("article") or soup.find_all("div", class_="post")
+        if not posts:
+            # Fallback: parse whole page
+            posts = [soup]
+
+        all_fugitives = []
+        for post in posts[:4]:  # Only last 4 weeks
+            post_html = str(post)
+            found = parse_fugitive_post(post_html)
+            all_fugitives.extend(found)
+            print(f"  [Fugitive] Found {len(found)} fugitives in post")
+
+        print(f"[Fugitives] Total parsed: {len(all_fugitives)}")
+
+        if not all_fugitives:
+            print("[Fugitives] No fugitives parsed — skipping update")
+            return
+
+        # Geocode each fugitive address
+        records = []
+        for f in all_fugitives:
+            coords = geocode_fugitive_address(f["address"])
+            lat = coords[0] if coords else None
+            lng = coords[1] if coords else None
+            records.append({
+                "name":        f["name"],
+                "dob":         f["dob"],
+                "charges":     f["charges"],
+                "address":     f["address"],
+                "lat":         lat,
+                "lng":         lng,
+                "photo_url":   f["photo_url"],
+                "warrant_num": f["warrant_num"],
+                "scraped_at":  datetime.now(timezone.utc).isoformat(),
+            })
+
+        geocoded = sum(1 for r in records if r["lat"] is not None)
+        print(f"[Fugitives] Geocoded {geocoded}/{len(records)} addresses")
+
+        # Clear old records and insert fresh batch
+        sb_delete(
+            "fugitives?id=neq.00000000-0000-0000-0000-000000000000"
+        )
+
+        # Insert in batches
+        for i in range(0, len(records), 100):
+            batch = records[i:i+100]
+            sb_post("fugitives", batch)
+
+        ts = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+        print(f"[Fugitives] ✅ Saved {len(records)} fugitives — updated {ts}")
+
+    except requests.exceptions.ConnectionError as e:
+        print(f"[Fugitives] Connection error: {e}")
+    except Exception as e:
+        print(f"[Fugitives] Error: {e}")
+
+
+def fugitive_scrape_loop():
+    """Scrape fugitives at startup then every 7 days."""
+    while True:
+        scrape_fugitives()
+        time.sleep(FUGITIVE_REFRESH_SECONDS)
 
 
 # ══════════════════════════════════════════════════════════════════
 #  CAD STREET NAME CORRECTIONS
 #  Source: Shelby County 911 NG911 GeoDatabase — ROAD layer
-#  Maps dispatcher/scanner shorthand to official street names
-#  Applied before geocoding to improve address matching
 # ══════════════════════════════════════════════════════════════════
 
 CAD_CORRECTIONS = {
@@ -85,10 +534,6 @@ CAD_CORRECTIONS = {
 }
 
 def apply_cad_corrections(location_text):
-    """
-    Normalize scanner/CAD shorthand to official street names before geocoding.
-    E.g. 'on 51' -> 'US Highway 51', 'MLK Jr' -> 'Doctor Martin Luther King Junior'
-    """
     if not location_text:
         return location_text
     result = location_text
@@ -99,99 +544,7 @@ def apply_cad_corrections(location_text):
 
 
 # ══════════════════════════════════════════════════════════════════
-#  HEATMAP REFRESH
-#  Fetches P1 violent crime data from Memphis Open Data Hub daily
-#  and writes to Supabase heatmap_points table
-# ══════════════════════════════════════════════════════════════════
-
-MPD_INCIDENTS_API = "https://data.memphistn.gov/resource/puh4-eea4.json"
-
-P1_CATEGORIES = {
-    "HOMICIDE",
-    "ROBBERY",
-    "AGGRAVATED ASSAULT",
-    "WEAPON LAW VIOLATION",
-    "KIDNAPPING/ABDUCTION",
-}
-
-def refresh_heatmap():
-    print("[Heatmap] Starting daily refresh from Memphis Open Data Hub...")
-    try:
-        params = {
-            "$limit": 5000,
-            "$where": f"ucr_category in ({','.join(repr(c) for c in P1_CATEGORIES)})",
-            "$select": "latitude,longitude,ucr_category,offense_datetime",
-        }
-        r = requests.get(MPD_INCIDENTS_API, params=params, timeout=30)
-        r.raise_for_status()
-        data = r.json()
-        print(f"[Heatmap] Fetched {len(data)} P1 incidents from Memphis Open Data")
-
-        points = []
-        for row in data:
-            try:
-                lat = float(row.get("latitude", 0))
-                lng = float(row.get("longitude", 0))
-                if not lat or not lng:
-                    continue
-                if 34.9 <= lat <= 35.5 and -90.4 <= lng <= -89.6:
-                    points.append({
-                        "lat":      lat,
-                        "lng":      lng,
-                        "category": row.get("ucr_category", ""),
-                    })
-            except (ValueError, TypeError):
-                continue
-
-        print(f"[Heatmap] {len(points)} valid coordinate points extracted")
-        if not points:
-            print("[Heatmap] No valid points — skipping update")
-            return
-
-        headers = {
-            "apikey":        SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}",
-            "Content-Type":  "application/json",
-            "Prefer":        "return=minimal",
-        }
-
-        # Clear existing points
-        del_r = requests.delete(
-            f"{SUPABASE_URL}/rest/v1/heatmap_points"
-            "?id=neq.00000000-0000-0000-0000-000000000000",
-            headers=headers, timeout=15,
-        )
-        del_r.raise_for_status()
-
-        # Insert new points in batches of 500
-        inserted = 0
-        for i in range(0, len(points), 500):
-            batch = points[i:i+500]
-            ins_r = requests.post(
-                f"{SUPABASE_URL}/rest/v1/heatmap_points",
-                json=batch, headers=headers, timeout=30,
-            )
-            ins_r.raise_for_status()
-            inserted += len(batch)
-
-        ts = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
-        print(f"[Heatmap] ✅ Inserted {inserted} points — updated {ts}")
-
-    except requests.exceptions.RequestException as e:
-        print(f"[Heatmap] Network error: {e}")
-    except Exception as e:
-        print(f"[Heatmap] Error: {e}")
-
-
-def heatmap_refresh_loop():
-    while True:
-        refresh_heatmap()
-        time.sleep(HEATMAP_REFRESH_INTERVAL)
-
-
-# ══════════════════════════════════════════════════════════════════
 #  MPD STATION DETECTION
-#  Coordinate-based bounding boxes from Memphis Open Data GeoJSON
 # ══════════════════════════════════════════════════════════════════
 
 STATION_BOUNDS = {
@@ -217,8 +570,6 @@ def detect_station(lat, lng):
 
 # ══════════════════════════════════════════════════════════════════
 #  DISPATCHER DETECTION
-#  Memphis PD dispatchers use WP prefix in their call signs
-#  e.g. WP-12, WP12, Whiskey Papa
 # ══════════════════════════════════════════════════════════════════
 
 def is_dispatcher_call(unit_text, transcript=""):
@@ -236,7 +587,7 @@ def is_dispatcher_call(unit_text, transcript=""):
 
 
 # ══════════════════════════════════════════════════════════════════
-#  GANG HOTSPOT ZONES — MEMPHIS
+#  GANG HOTSPOT ZONES
 # ══════════════════════════════════════════════════════════════════
 
 GANG_ZONES = {
@@ -476,7 +827,6 @@ def translate_ten_codes(transcript, city):
 
 # ══════════════════════════════════════════════════════════════════
 #  MEMPHIS LANDMARK LOOKUP TABLE
-#  Named locations that geocoding APIs struggle to find
 # ══════════════════════════════════════════════════════════════════
 
 MEMPHIS_LANDMARKS = {
@@ -526,19 +876,15 @@ def check_landmark(location_text):
 
 
 # ══════════════════════════════════════════════════════════════════
-#  GEOCODING
-#  Chain: Landmark -> 911 DB -> Google Places -> Google Geocoding
-#         -> Geocodio -> Nominatim -> City center
+#  GEOCODING CHAIN
 # ══════════════════════════════════════════════════════════════════
 
 def geocode_location(location_text, city):
     if not location_text:
         return CITIES[city]["center"]
 
-    # Apply CAD name corrections first
     location_text = apply_cad_corrections(location_text)
 
-    # Step 0: Landmark lookup
     landmark = check_landmark(location_text)
     if landmark:
         return landmark
@@ -548,7 +894,6 @@ def geocode_location(location_text, city):
     google_key   = os.environ.get("GOOGLE_MAPS_KEY", "")
     geocodio_key = os.environ.get("GEOCODIO_KEY", "")
 
-    # Build query list for intersection handling
     location_queries = [location_text]
 
     cross_match = re.match(
@@ -577,20 +922,13 @@ def geocode_location(location_text, city):
         return abs(lat - clat) + abs(lng - clng) < 2.0
 
     # Step 1: Shelby County 911 address database
-    # Most accurate source for Memphis street addresses
     try:
         normalized = location_text.strip().upper()
-        resp = requests.get(
-            f"{SUPABASE_URL}/rest/v1/memphis_addresses",
-            params={"address": f"eq.{normalized}", "select": "lat,lng", "limit": 1},
-            headers={
-                "apikey":        SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}",
-            },
-            timeout=5,
+        rows = sb_get(
+            "memphis_addresses",
+            params={"address": f"eq.{normalized}", "select": "lat,lng", "limit": 1}
         )
-        rows = resp.json()
-        if rows and isinstance(rows, list) and len(rows) > 0:
+        if rows:
             lat, lng = float(rows[0]['lat']), float(rows[0]['lng'])
             if in_city(lat, lng):
                 print(f"  Geocoded (911 DB): {normalized} -> {lat}, {lng}")
@@ -598,7 +936,7 @@ def geocode_location(location_text, city):
     except Exception as e:
         print(f"  911 DB error: {e}")
 
-    # Step 2: Google Places API — best for named locations
+    # Step 2: Google Places API
     if google_key:
         try:
             r = requests.get(
@@ -619,8 +957,6 @@ def geocode_location(location_text, city):
                 if in_city(lat, lng):
                     print(f"  Geocoded (Places): {location_text} -> {lat}, {lng}")
                     return lat, lng
-            else:
-                print(f"  Places API: {data.get('status')} for: {location_text}")
         except Exception as e:
             print(f"  Places API error: {e}")
 
@@ -640,22 +976,16 @@ def geocode_location(location_text, city):
                     if in_city(lat, lng):
                         print(f"  Geocoded (Google): {query} -> {lat}, {lng}")
                         return lat, lng
-                else:
-                    print(f"  Google geocode: {data.get('status')} for: {query}")
             except Exception as e:
                 print(f"  Google geocoding error: {e}")
 
-    # Step 4: Geocodio — good US address coverage, 2500 free/day
+    # Step 4: Geocodio
     if geocodio_key:
         for query in location_queries:
             try:
                 r = requests.get(
                     "https://api.geocod.io/v1.7/geocode",
-                    params={
-                        "q":       f"{query}, {city_label}",
-                        "api_key": geocodio_key,
-                        "limit":   1,
-                    },
+                    params={"q": f"{query}, {city_label}", "api_key": geocodio_key, "limit": 1},
                     timeout=10,
                 )
                 data    = r.json()
@@ -666,12 +996,10 @@ def geocode_location(location_text, city):
                     if in_city(lat, lng):
                         print(f"  Geocoded (Geocodio): {query} -> {lat}, {lng}")
                         return lat, lng
-                else:
-                    print(f"  Geocodio: no results for: {query}")
             except Exception as e:
                 print(f"  Geocodio error: {e}")
 
-    # Step 5: Nominatim — free fallback
+    # Step 5: Nominatim
     for query in location_queries:
         try:
             time.sleep(1)
@@ -690,12 +1018,9 @@ def geocode_location(location_text, city):
                 if in_city(lat, lng):
                     print(f"  Geocoded (Nominatim): {query} -> {lat}, {lng}")
                     return lat, lng
-            else:
-                print(f"  Nominatim: no results for: {query}")
         except Exception as e:
             print(f"  Nominatim error: {e}")
 
-    # Step 6: City center fallback
     print(f"  Falling back to city center for: {location_text}")
     return CITIES[city]["center"]
 
@@ -805,17 +1130,11 @@ For lat/lng use city center as fallback: {center_lat}, {center_lng}"""
 
 
 # ══════════════════════════════════════════════════════════════════
-#  SUPABASE WRITER
+#  SUPABASE INCIDENT WRITER
 # ══════════════════════════════════════════════════════════════════
 
 def save_incident(incident, city, transcript_original, transcript_translated,
                   gang_hotspot, gang_zone, station, is_dispatch):
-    headers = {
-        "apikey":        SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type":  "application/json",
-        "Prefer":        "return=minimal",
-    }
     payload = {
         "city":           city,
         "title":          incident.get("title"),
@@ -831,11 +1150,7 @@ def save_incident(incident, city, transcript_original, transcript_translated,
         "station":        station,
         "is_dispatch":    is_dispatch,
     }
-    r = requests.post(
-        f"{SUPABASE_URL}/rest/v1/incidents",
-        json=payload, headers=headers, timeout=10,
-    )
-    r.raise_for_status()
+    sb_post("incidents", payload)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -851,14 +1166,12 @@ def run_city(city):
 
     while True:
         try:
-            # Step 1: Capture audio
             audio = capture_chunk(stream_url, CHUNK_SECONDS)
             if len(audio) < 1000:
                 print(f"[{label}] Audio chunk too small — skipping")
                 time.sleep(5)
                 continue
 
-            # Step 2: Transcribe with Whisper
             transcript_raw = transcribe(audio)
             if not transcript_raw or len(transcript_raw.strip()) < 8:
                 print(f"[{label}] No speech detected — skipping")
@@ -866,48 +1179,36 @@ def run_city(city):
 
             print(f"[{label}] Raw: {transcript_raw[:120]}...")
 
-            # Step 3: Translate 10-codes
             transcript_translated = translate_ten_codes(transcript_raw, city)
             if transcript_raw != transcript_translated:
                 print(f"[{label}] Translated: {transcript_translated[:120]}...")
 
-            # Step 4: Parse with GPT
             parsed = parse_incident(transcript_translated, city)
             if not parsed.get("incident"):
                 print(f"[{label}] No incident detected — skipping")
                 continue
 
-            # Step 5: Filter by priority — P1, P2, Medical only
             priority = parsed.get("priority", "")
             if priority not in ("p1", "p2", "medical"):
                 print(f"[{label}] Skipping {priority.upper()} — below threshold")
                 continue
 
-            # Step 6: Geocode
             location = parsed.get("location")
             lat, lng = geocode_location(location, city)
             parsed["lat"] = lat
             parsed["lng"] = lng
 
-            # Step 7: Detect MPD station from coordinates
-            station = detect_station(lat, lng)
-            if station:
-                print(f"  Station: {station}")
-
-            # Step 8: Detect dispatcher call (WP units)
+            station     = detect_station(lat, lng)
             unit        = parsed.get("unit", "")
             is_dispatch = is_dispatcher_call(unit, transcript_translated)
-            if is_dispatch:
-                print(f"  📡 Dispatcher call: {unit}")
-
-            # Step 9: Check gang hotspot zones
             gang_hotspot, gang_zone = check_gang_hotspot(
                 location, parsed.get("title"), city
             )
-            if gang_hotspot:
-                print(f"  ⚠ Gang hotspot: {gang_zone}")
 
-            # Step 10: Save to Supabase
+            if station:      print(f"  Station: {station}")
+            if is_dispatch:  print(f"  📡 Dispatcher call: {unit}")
+            if gang_hotspot: print(f"  ⚠ Gang hotspot: {gang_zone}")
+
             save_incident(
                 parsed, city,
                 transcript_raw, transcript_translated,
@@ -915,9 +1216,9 @@ def run_city(city):
             )
 
             tags = []
-            if is_dispatch:   tags.append("📡 DISPATCH")
-            if station:       tags.append(station)
-            if gang_hotspot:  tags.append(f"⚠ {gang_zone}")
+            if is_dispatch:  tags.append("📡 DISPATCH")
+            if station:      tags.append(station)
+            if gang_hotspot: tags.append(f"⚠ {gang_zone}")
             tag_str = f" [{', '.join(tags)}]" if tags else ""
             print(
                 f"[{label}] ✅ Saved: [{priority.upper()}] "
@@ -961,22 +1262,36 @@ if __name__ == "__main__":
         for e in errors: print(f"  ✗ {e}")
         exit(1)
 
+    # Install beautifulsoup4 if not present
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:
+        print("Installing beautifulsoup4...")
+        os.system("pip install beautifulsoup4 --break-system-packages -q")
+        from bs4 import BeautifulSoup
+
     threads = []
 
-    # Heatmap refresh thread — runs immediately then every 24 hours
-    hm = threading.Thread(target=heatmap_refresh_loop, daemon=True, name="heatmap")
+    # Heatmap — load static points once at startup
+    hm = threading.Thread(target=load_heatmap, daemon=True, name="heatmap")
     hm.start()
     threads.append(hm)
-    print("  ✓ Started: Heatmap refresh (daily)")
+    print("  ✓ Started: Heatmap loader")
 
-    # Scanner thread for Memphis
+    # Fugitive scraper — runs at startup then weekly
+    fg = threading.Thread(target=fugitive_scrape_loop, daemon=True, name="fugitives")
+    fg.start()
+    threads.append(fg)
+    print("  ✓ Started: Fugitive scraper (weekly)")
+
+    # Memphis scanner
     for city in CITIES:
         t = threading.Thread(target=run_city, args=(city,), daemon=True, name=city)
         t.start()
         threads.append(t)
         print(f"  ✓ Started: {CITIES[city]['label']}")
 
-    print("\nAll threads running. Monitoring...\n")
+    print("\nAll threads running.\n")
 
     try:
         while True:
