@@ -43,9 +43,6 @@
   --gang:        #ff6b1a;
   --gang-dim:    rgba(255,107,26,0.12);
   --gang-bdr:    rgba(255,107,26,0.30);
-  --dispatch:    #a78bfa;
-  --dispatch-dim:rgba(167,139,250,0.12);
-  --dispatch-bdr:rgba(167,139,250,0.30);
   --teal:        #14b8a6;
   --teal-dim:    rgba(20,184,166,0.12);
   --teal-bdr:    rgba(20,184,166,0.30);
@@ -103,7 +100,6 @@ html,body{height:100%;height:100dvh;background:var(--bg);color:var(--text);font-
 .chip[data-f="p2"].active{background:var(--amber);}
 .chip[data-f="medical"].active{background:var(--blue);}
 .chip[data-f="gang"].active{background:var(--gang);}
-.chip[data-f="dispatch"].active{background:var(--dispatch);}
 .dchip{font-size:9px;padding:4px 9px;}
 .dchip.active{color:var(--bg)!important;border-color:transparent!important;}
 
@@ -137,17 +133,13 @@ html,body{height:100%;height:100dvh;background:var(--bg);color:var(--text);font-
 .incident.selected::before{background:var(--gold);}
 .incident.in-radius{background:rgba(245,200,66,0.03);}
 .incident.is-gang::before{background:var(--gang);}
-.incident.is-dispatch{background:rgba(167,139,250,0.05);}
-.incident.is-dispatch::before{background:var(--dispatch);}
-.incident.is-dispatch .inc-title{color:var(--dispatch);}
 
 .inc-row1{display:flex;align-items:center;gap:5px;margin-bottom:5px;flex-wrap:wrap;}
 .badge{font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:2px 6px;border-radius:2px;flex-shrink:0;}
 .badge-p1{background:var(--red-dim);color:var(--red);border:1px solid var(--red-bdr);}
 .badge-p2{background:var(--amber-dim);color:var(--amber);border:1px solid var(--amber-bdr);}
 .badge-medical{background:var(--blue-dim);color:var(--blue);border:1px solid var(--blue-bdr);}
-.dispatch-tag{font-family:var(--mono);font-size:9px;font-weight:700;color:var(--dispatch);background:var(--dispatch-dim);border:1px solid var(--dispatch-bdr);padding:2px 6px;border-radius:2px;flex-shrink:0;animation:pulse-d 2s ease-in-out infinite;}
-@keyframes pulse-d{0%,100%{opacity:1}50%{opacity:0.6}}
+50%{opacity:0.6}}
 .station-tag{font-family:var(--mono);font-size:9px;font-weight:700;padding:2px 6px;border-radius:2px;flex-shrink:0;}
 .gang-tag{font-family:var(--mono);font-size:9px;font-weight:700;color:var(--gang);background:var(--gang-dim);border:1px solid var(--gang-bdr);padding:2px 6px;border-radius:2px;flex-shrink:0;}
 .radius-tag{font-family:var(--mono);font-size:9px;font-weight:700;color:var(--gold);background:var(--gold-dim);border:1px solid var(--gold-bdr);padding:2px 6px;border-radius:2px;}
@@ -177,7 +169,6 @@ html,body{height:100%;height:100dvh;background:var(--bg);color:var(--text);font-
 .p-row{font-size:12px;color:var(--text2);margin-bottom:4px;display:flex;gap:6px;}
 .p-row b{color:var(--text);font-weight:500;}
 .p-station{font-family:var(--mono);font-size:11px;margin-top:6px;padding:4px 8px;border-radius:3px;}
-.p-dispatch{font-family:var(--mono);font-size:11px;color:var(--dispatch);margin-top:6px;padding:4px 8px;background:var(--dispatch-dim);border:1px solid var(--dispatch-bdr);border-radius:3px;}
 .p-gang{font-size:11px;color:var(--gang);font-weight:600;margin-top:6px;padding:5px 8px;background:var(--gang-dim);border:1px solid var(--gang-bdr);border-radius:3px;}
 .p-dist{font-family:var(--mono);font-size:11px;color:var(--gold);margin-top:6px;padding-top:6px;border-top:1px solid var(--border);}
 .p-tx{font-size:11px;color:var(--text3);font-style:italic;line-height:1.5;margin-top:6px;padding-top:6px;border-top:1px solid var(--border);}
@@ -219,7 +210,6 @@ html,body{height:100%;height:100dvh;background:var(--bg);color:var(--text);font-
 #toast-wrap{position:fixed;top:58px;right:12px;z-index:9000;display:flex;flex-direction:column;gap:6px;pointer-events:none;max-width:290px;}
 .toast{display:flex;align-items:flex-start;gap:9px;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:10px 12px;pointer-events:all;cursor:pointer;animation:tIn 0.25s ease forwards;}
 .toast.gang-toast{border-color:var(--gang-bdr);}
-.toast.dispatch-toast{border-color:var(--dispatch-bdr);background:rgba(167,139,250,0.08);}
 .toast.out{animation:tOut 0.25s ease forwards;}
 @keyframes tIn{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
 @keyframes tOut{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(16px)}}
@@ -228,7 +218,6 @@ html,body{height:100%;height:100dvh;background:var(--bg);color:var(--text);font-
 .t-title{font-size:13px;font-weight:600;color:var(--text);}
 .t-loc{font-size:11px;color:var(--text2);margin-top:2px;}
 .t-gang{font-size:10px;color:var(--gang);font-family:var(--mono);margin-top:3px;}
-.t-dispatch{font-size:10px;color:var(--dispatch);font-family:var(--mono);margin-top:3px;font-weight:700;}
 
 /* BOOT */
 #boot-overlay{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;z-index:9999;}
@@ -316,9 +305,7 @@ function getStationColor(n){if(!n)return null;const k=STATION_NAMES.find(x=>n.in
   <div class="chip" data-f="p1">Priority 1</div>
   <div class="chip" data-f="p2">Priority 2</div>
   <div class="chip" data-f="medical">Medical</div>
-  <div class="chip" data-f="gang">⚠ Gang</div>
-  <div class="chip" data-f="dispatch">📡 Dispatch</div>
-</div>
+  <div class="chip" data-f="gang">⚠ Gang</div></div>
 
 <div class="filter-bar" id="district-filter-bar">
   <span class="filter-bar-label">District</span>
@@ -430,7 +417,6 @@ function stationMatch(inc){if(S.selectedDistricts.size===0)return true;if(!inc.s
 function getVisible(){
   return S.incidents.filter(i=>{
     if(!stationMatch(i))return false;
-    if(S.filter==="dispatch")return i.is_dispatch===true;
     if(S.radiusMode){if(!isLast24h(i.created_at)||!i.lat||!i.lng)return false;if(haversine(S.radiusCenter.lat,S.radiusCenter.lng,i.lat,i.lng)>CONFIG.RADIUS_MILES)return false;}
     if(S.filter==="gang")return i.gang_hotspot===true;
     return S.filter==="all"||i.priority===S.filter;
@@ -515,7 +501,7 @@ function fugitivePopupHTML(f){
       <div class="f-charges">${f.charges||"Charges unknown"}</div>
       <div class="f-addr">📍 Last known: ${f.address||"Unknown"}</div>
       <div class="f-warrant">Warrant #${f.warrant_num||"N/A"}</div>
-
+      <a class="f-tip" href="https://crimestopmem.org/tips/" target="_blank" rel="noopener">Submit Anonymous Tip →</a>
     </div>
   `;
 }
@@ -544,10 +530,10 @@ function toggleFugitives(){
 }
 
 /* ── INCIDENT MARKERS ── */
-function makeIcon(priority,selected,inRadius,isGang,isDispatch){
-  const col=isDispatch?"#a78bfa":isGang?"#ff6b1a":(PIN_COL[priority]||"#6b7d96"),sz=selected?20:inRadius?16:12;
-  const glow=selected?`box-shadow:0 0 14px ${col}90;`:isDispatch||isGang?`box-shadow:0 0 10px ${col}70;`:inRadius?`box-shadow:0 0 8px ${col}60;`:"";
-  const bdr=isGang?`border:2px solid #ff6b1a;`:isDispatch?`border:2px solid #a78bfa;`:inRadius?`border:2px solid var(--gold);`:`border:2px solid rgba(255,255,255,0.55);`;
+function makeIcon(priority,selected,inRadius,isGang){
+  const col=isGang?"#ff6b1a":(PIN_COL[priority]||"#6b7d96"),sz=selected?20:inRadius?16:12;
+  const glow=selected?`box-shadow:0 0 14px ${col}90;`:isGang?`box-shadow:0 0 10px ${col}70;`:inRadius?`box-shadow:0 0 8px ${col}60;`:"";
+  const bdr=isGang?`border:2px solid #ff6b1a;`:inRadius?`border:2px solid var(--gold);`:`border:2px solid rgba(255,255,255,0.55);`;
   return L.divIcon({className:"",html:`<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${col};${bdr}${glow}transition:all 0.2s;"></div>`,iconAnchor:[sz/2,sz/2],iconSize:[sz,sz]});
 }
 function makeUserIcon(){return L.divIcon({className:"",html:`<div style="width:20px;height:20px;border-radius:50%;background:#f5c842;border:3px solid #fff;box-shadow:0 0 16px rgba(245,200,66,0.8);"></div>`,iconAnchor:[10,10],iconSize:[20,20]});}
@@ -555,9 +541,7 @@ function makeUserIcon(){return L.divIcon({className:"",html:`<div style="width:2
 function popupHTML(inc){
   const b=BADGE[inc.priority]||BADGE.p2,dist=getDist(inc),stColor=getStationColor(inc.station);
   return `
-    <div class="p-badge ${b.cls}">${b.label}</div>
-    ${inc.is_dispatch?`<div class="p-dispatch">📡 Dispatcher Call (WP Unit)</div>`:""}
-    <div class="p-title">${inc.title||"Unknown incident"}</div>
+    <div class="p-badge ${b.cls}">${b.label}</div>    <div class="p-title">${inc.title||"Unknown incident"}</div>
     <div class="p-row">📍 <b>${inc.location||"Location unknown"}</b></div>
     <div class="p-row">🕐 <b>${fmtTime(inc.created_at)} — ${fmtAgo(inc.created_at)}</b></div>
     <div class="p-row">🚔 <b>${inc.unit||"—"}</b></div>
@@ -574,7 +558,7 @@ function syncMarkers(){
   visible.forEach(inc=>{
     if(!inc.lat||!inc.lng)return;
     const selected=inc.id===S.selectedId,isGang=inc.gang_hotspot===true,isDispatch=inc.is_dispatch===true;
-    const icon=makeIcon(inc.priority,selected,S.radiusMode,isGang,isDispatch);
+    const icon=makeIcon(inc.priority,selected,S.radiusMode,isGang);
     if(S.markers[inc.id]){S.markers[inc.id].setIcon(icon);S.markers[inc.id].setPopupContent(popupHTML(inc));return;}
     const m=L.marker([inc.lat,inc.lng],{icon}).addTo(S.map).bindPopup(popupHTML(inc),{maxWidth:270}).on("click",()=>selectIncident(inc.id));
     S.markers[inc.id]=m;
@@ -597,14 +581,12 @@ function renderFeed(){
   scroll.innerHTML=list.map(inc=>{
     const b=BADGE[inc.priority]||BADGE.p2;
     const sel=inc.id===S.selectedId?" selected":"",inR=S.radiusMode?" in-radius":"";
-    const gangCls=inc.gang_hotspot?" is-gang":"",dispCls=inc.is_dispatch?" is-dispatch":"";
+    const gangCls=inc.gang_hotspot?" is-gang":"";
     const dist=getDist(inc),stColor=getStationColor(inc.station);
     const stShort=inc.station?inc.station.replace(" Station",""):"";
-    return `<div class="incident${sel}${inR}${gangCls}${dispCls}" data-id="${inc.id}">
+    return `<div class="incident${sel}${inR}${gangCls}" data-id="${inc.id}">
       <div class="inc-row1">
-        <span class="badge ${b.cls}">${b.label}</span>
-        ${inc.is_dispatch?`<span class="dispatch-tag">📡 Dispatch</span>`:""}
-        ${inc.station?`<span class="station-tag" style="color:${stColor||'var(--gold)'};background:${stColor||'#f5c842'}18;border:1px solid ${stColor||'var(--gold-bdr)'}50">🏢 ${stShort}</span>`:""}
+        <span class="badge ${b.cls}">${b.label}</span>        ${inc.station?`<span class="station-tag" style="color:${stColor||'var(--gold)'};background:${stColor||'#f5c842'}18;border:1px solid ${stColor||'var(--gold-bdr)'}50">🏢 ${stShort}</span>`:""}
         ${inc.gang_hotspot?`<span class="gang-tag">⚠ Gang</span>`:""}
         ${S.radiusMode&&dist!==null?`<span class="radius-tag">📏 ${fmtDist(dist)}</span>`:""}
         ${isNew(inc.created_at)?`<span class="new-tag">NEW</span>`:""}
@@ -623,7 +605,7 @@ function renderFeed(){
 /* ── SELECT INCIDENT ── */
 function selectIncident(id){
   S.selectedId=id;const inc=S.incidents.find(i=>i.id===id);
-  Object.entries(S.markers).forEach(([mid,m])=>{const i=S.incidents.find(x=>x.id===mid);if(i)m.setIcon(makeIcon(i.priority,mid===id,S.radiusMode,i.gang_hotspot===true,i.is_dispatch===true));});
+  Object.entries(S.markers).forEach(([mid,m])=>{const i=S.incidents.find(x=>x.id===mid);if(i)m.setIcon(makeIcon(i.priority,mid===id,S.radiusMode,i.gang_hotspot===true));});
   if(inc&&inc.lat&&inc.lng){S.map.flyTo([parseFloat(inc.lat),parseFloat(inc.lng)],15,{duration:0.75});setTimeout(()=>S.markers[id]?.openPopup(),800);}
   renderFeed();
   document.querySelector(`.incident[data-id="${id}"]`)?.scrollIntoView({behavior:"smooth",block:"nearest"});
@@ -663,16 +645,14 @@ function clearRadiusSearch(){
 /* ── TOAST ── */
 function showToast(inc){
   const wrap=document.getElementById("toast-wrap"),el=document.createElement("div");
-  const stColor=getStationColor(inc.station),isDispatch=inc.is_dispatch===true;
-  el.className=isDispatch?"toast dispatch-toast":inc.gang_hotspot?"toast gang-toast":"toast";
-  el.innerHTML=`<div class="t-dot" style="background:${isDispatch?"var(--dispatch)":inc.gang_hotspot?"var(--gang)":"var(--memphis)"}"></div>
+  const stColor=getStationColor(inc.station);
+  el.className=inc.gang_hotspot?"toast gang-toast":"toast";
+  el.innerHTML=`<div class="t-dot" style="background:${inc.gang_hotspot?"var(--gang)":"var(--memphis)"}"></div>
     <div style="flex:1">
       <div class="t-city" style="color:var(--memphis)">Memphis, TN</div>
       <div class="t-title">${inc.title||"New incident"}</div>
       ${inc.location?`<div class="t-loc">${inc.location}</div>`:""}
-      ${inc.station?`<div class="t-loc" style="color:${stColor||'var(--gold)'}">🏢 ${inc.station}</div>`:""}
-      ${isDispatch?`<div class="t-dispatch">📡 Dispatcher Call</div>`:""}
-      ${inc.gang_hotspot?`<div class="t-gang">⚠ ${inc.gang_zone}</div>`:""}
+      ${inc.station?`<div class="t-loc" style="color:${stColor||'var(--gold)'}">🏢 ${inc.station}</div>`:""}      ${inc.gang_hotspot?`<div class="t-gang">⚠ ${inc.gang_zone}</div>`:""}
     </div>`;
   el.addEventListener("click",()=>{selectIncident(inc.id);dismiss(el);});
   wrap.prepend(el);while(wrap.children.length>4)wrap.lastChild.remove();
