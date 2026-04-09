@@ -559,7 +559,7 @@ function syncMarkers(){
   Object.keys(S.markers).forEach(id=>{if(!visibleIds.has(id)){S.markers[id].remove();delete S.markers[id];}});
   visible.forEach(inc=>{
     if(!inc.lat||!inc.lng)return;
-    const selected=inc.id===S.selectedId,isGang=inc.gang_hotspot===true,isDispatch=inc.is_dispatch===true;
+    const selected=inc.id===S.selectedId,isGang=inc.gang_hotspot===true;
     const icon=makeIcon(inc.priority,selected,S.radiusMode,isGang);
     if(S.markers[inc.id]){S.markers[inc.id].setIcon(icon);S.markers[inc.id].setPopupContent(popupHTML(inc));return;}
     const m=L.marker([inc.lat,inc.lng],{icon}).addTo(S.map).bindPopup(popupHTML(inc),{maxWidth:270}).on("click",()=>selectIncident(inc.id));
