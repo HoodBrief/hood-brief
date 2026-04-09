@@ -706,7 +706,7 @@ async function boot(){
   if(unconfigured){document.getElementById("boot-msg").innerHTML=`<span style="color:var(--red)">Add your Supabase URL and anon key to the CONFIG block</span>`;document.querySelector(".spinner").style.display="none";return;}
   document.getElementById("boot-msg").textContent="Loading incidents…";
   try{
-    const [rows] = await const [rows] = await Promise.all([
+    const [rows] = await Promise.all([
       SB.query(`incidents?select=*&order=created_at.desc&limit=${CONFIG.INITIAL_LOAD}`),
       loadHeatmapPoints(),
     ]);
