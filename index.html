@@ -143,7 +143,9 @@ html,body{height:100%;height:100dvh;background:var(--bg);color:var(--text);font-
 .station-tag{font-family:var(--mono);font-size:9px;font-weight:700;padding:2px 6px;border-radius:2px;flex-shrink:0;}
 .gang-tag{font-family:var(--mono);font-size:9px;font-weight:700;color:var(--gang);background:var(--gang-dim);border:1px solid var(--gang-bdr);padding:2px 6px;border-radius:2px;flex-shrink:0;}
 .radius-tag{font-family:var(--mono);font-size:9px;font-weight:700;color:var(--gold);background:var(--gold-dim);border:1px solid var(--gold-bdr);padding:2px 6px;border-radius:2px;}
-.new-tag{font-family:var(--mono);font-size:9px;font-weight:700;color:var(--green);background:var(--green-dim);border:1px solid var(--green-bdr);padding:2px 6px;border-radius:2px;animation:fadeTag 5s forwards;}
+.new-tag{font-family:var(--mono);font-size:9px;font-weight:700;color:var(--green);background:var(--green-dim);border:1px solid var(--green-bdr);padding:2px 6px;border-radius:2px;overflow:hidden;white-space:nowrap;animation:fadeTag 5s forwards;}
+@keyframes fadeTag{0%,65%{opacity:1;max-width:60px;padding:2px 6px;}100%{opacity:0;max-width:0;padding:0;border:none;}}
+@keyframes fadeTag{0%,65%{opacity:1;max-width:60px;margin:0;padding:2px 6px;}100%{opacity:0;max-width:0;margin:0;padding:0;border:none;}}
 @keyframes fadeTag{0%,65%{opacity:1}100%{opacity:0}}
 .inc-time{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3);font-variant-numeric:tabular-nums;flex-shrink:0;}
 .inc-title{font-size:14px;font-weight:600;color:var(--text);line-height:1.3;margin-bottom:4px;}
@@ -704,10 +706,9 @@ async function boot(){
   if(unconfigured){document.getElementById("boot-msg").innerHTML=`<span style="color:var(--red)">Add your Supabase URL and anon key to the CONFIG block</span>`;document.querySelector(".spinner").style.display="none";return;}
   document.getElementById("boot-msg").textContent="Loading incidents…";
   try{
-    const [rows] = await Promise.all([
+    const [rows] = await const [rows] = await Promise.all([
       SB.query(`incidents?select=*&order=created_at.desc&limit=${CONFIG.INITIAL_LOAD}`),
       loadHeatmapPoints(),
-      loadFugitives(),
     ]);
     S.incidents=rows.map(i=>{
       const lat=i.lat?parseFloat(i.lat):null,lng=i.lng?parseFloat(i.lng):null;
@@ -716,6 +717,8 @@ async function boot(){
     });
     document.getElementById("boot-overlay").classList.add("gone");
     renderFeed();
+    // Load fugitives in background — don't block boot
+    loadFugitives().catch(e=>console.log("[Fugitives]",e.message));
     SB.subscribe(newRow=>{
       newRow.lat=newRow.lat?parseFloat(newRow.lat):null;newRow.lng=newRow.lng?parseFloat(newRow.lng):null;
       if(!newRow.station&&newRow.lat&&newRow.lng)newRow.station=detectStation(newRow.lat,newRow.lng);
@@ -726,7 +729,6 @@ async function boot(){
     });
   }catch(err){document.getElementById("boot-msg").innerHTML=`<span style="color:var(--red)">Connection failed: ${err.message}</span>`;document.querySelector(".spinner").style.display="none";}
 }
-
 setInterval(pollForUpdates,30000);
 setTimeout(pollForUpdates,5000);
 boot();
