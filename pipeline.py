@@ -2,8 +2,9 @@
 Hood Brief — Scanner Pipeline
 Memphis, TN
 Includes: 10-code translation, geocoding (Google + Geocodio + Nominatim),
-          intersection handling, gang hotspot detection, MPD station tagging
-P1 and P2 and Medical incidents only
+          intersection handling, gang hotspot detection, MPD station tagging,
+          daily heatmap refresh from Memphis Open Data, WP dispatcher detection
+P1, P2, and Medical incidents only
 """
 
 import os
@@ -13,6 +14,7 @@ import json
 import tempfile
 import threading
 import requests
+from datetime import datetime, timezone
 from openai import OpenAI
 
 # ══════════════════════════════════════════════════════════════════
@@ -33,49 +35,165 @@ CITIES = {
 CHUNK_SECONDS = 30
 MAX_RETRIES   = 3
 
+# How often to refresh the heatmap from Memphis Open Data (seconds)
+HEATMAP_REFRESH_INTERVAL = 86400  # 24 hours
+
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 # ══════════════════════════════════════════════════════════════════
-#  MPD STATION DETECTION FROM UNIT NUMBER
-#
-#  Memphis PD unit prefixes identify the responding station.
-#  We scan the unit field for these prefixes and tag the incident.
+#  HEATMAP REFRESH — Memphis Open Data Hub
+#  Pulls latest MPD Public Safety Incidents daily
+#  Filters to P1-equivalent violent crimes and saves to Supabase
 # ══════════════════════════════════════════════════════════════════
 
-MPD_STATIONS = [
-    # Each entry: (regex pattern, station name)
-    # Order matters — more specific patterns first
-    (r'\bAP\d',     "Appling Farms Station"),
-    (r'\bAU\d',     "Austin Peay Station"),
-    (r'\bMM\d',     "Mt. Moriah Station"),
-    (r'\bNM\d',     "North Main Station"),
-    (r'\bRW\d',     "Ridgeway Station"),
-    (r'\bA\d',      "Airways Station"),
-    (r'\bC\d',      "Crump Station"),
-    (r'\bR\d',      "Raines Station"),
-    (r'\bT\d',      "Tillman Station"),
-    # Also match written station names in transcript
-    (r'appling',    "Appling Farms Station"),
-    (r'austin peay',"Austin Peay Station"),
-    (r'mt\.? moriah',"Mt. Moriah Station"),
-    (r'north main', "North Main Station"),
-    (r'ridgeway',   "Ridgeway Station"),
-    (r'airways',    "Airways Station"),
-    (r'crump',      "Crump Station"),
-    (r'raines',     "Raines Station"),
-    (r'tillman',    "Tillman Station"),
-]
+# Memphis Open Data Hub — MPD Public Safety Incidents (Socrata API)
+MPD_INCIDENTS_API = "https://data.memphistn.gov/resource/puh4-eea4.json"
 
-def detect_station(unit_text, transcript=""):
+# P1-equivalent violent crime categories
+P1_CATEGORIES = {
+    "HOMICIDE",
+    "ROBBERY",
+    "AGGRAVATED ASSAULT",
+    "WEAPON LAW VIOLATION",
+    "KIDNAPPING/ABDUCTION",
+}
+
+def refresh_heatmap():
     """
-    Detect the MPD station from unit designations or transcript text.
-    Returns station name string or None if not detected.
+    Fetch latest MPD incident data from Memphis Open Data Hub,
+    extract P1 violent crime coordinates, and update Supabase heatmap_points table.
+    Runs once at startup then every 24 hours.
     """
-    search_text = f"{unit_text or ''} {transcript or ''}".lower()
-    for pattern, station in MPD_STATIONS:
-        if re.search(pattern, search_text, re.IGNORECASE):
+    print("[Heatmap] Starting daily refresh from Memphis Open Data Hub...")
+    try:
+        # Fetch last 90 days of incidents, limit 5000
+        params = {
+            "$limit": 5000,
+            "$where": f"ucr_category in ({','.join(repr(c) for c in P1_CATEGORIES)})",
+            "$select": "latitude,longitude,ucr_category,offense_datetime",
+        }
+        r = requests.get(MPD_INCIDENTS_API, params=params, timeout=30)
+        r.raise_for_status()
+        data = r.json()
+        print(f"[Heatmap] Fetched {len(data)} P1 incidents from Memphis Open Data")
+
+        # Extract valid coordinates
+        points = []
+        for row in data:
+            try:
+                lat = float(row.get("latitude", 0))
+                lng = float(row.get("longitude", 0))
+                if not lat or not lng:
+                    continue
+                # Sanity check — must be within Memphis area
+                if 34.9 <= lat <= 35.5 and -90.4 <= lng <= -89.6:
+                    points.append({
+                        "lat":      lat,
+                        "lng":      lng,
+                        "category": row.get("ucr_category", ""),
+                    })
+            except (ValueError, TypeError):
+                continue
+
+        print(f"[Heatmap] {len(points)} valid coordinate points extracted")
+
+        if not points:
+            print("[Heatmap] No valid points found — skipping update")
+            return
+
+        # Clear existing heatmap points and insert new ones
+        headers = {
+            "apikey":        SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+            "Content-Type":  "application/json",
+            "Prefer":        "return=minimal",
+        }
+
+        # Delete all existing points
+        del_r = requests.delete(
+            f"{SUPABASE_URL}/rest/v1/heatmap_points?id=neq.00000000-0000-0000-0000-000000000000",
+            headers=headers,
+            timeout=15,
+        )
+        del_r.raise_for_status()
+        print(f"[Heatmap] Cleared existing heatmap points")
+
+        # Insert new points in batches of 500
+        batch_size = 500
+        inserted = 0
+        for i in range(0, len(points), batch_size):
+            batch = points[i:i+batch_size]
+            ins_r = requests.post(
+                f"{SUPABASE_URL}/rest/v1/heatmap_points",
+                json=batch,
+                headers=headers,
+                timeout=30,
+            )
+            ins_r.raise_for_status()
+            inserted += len(batch)
+
+        print(f"[Heatmap] ✅ Inserted {inserted} points — heatmap updated {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+
+    except requests.exceptions.RequestException as e:
+        print(f"[Heatmap] Network error: {e}")
+    except Exception as e:
+        print(f"[Heatmap] Error: {e}")
+
+
+def heatmap_refresh_loop():
+    """Runs heatmap refresh at startup then every 24 hours."""
+    while True:
+        refresh_heatmap()
+        time.sleep(HEATMAP_REFRESH_INTERVAL)
+
+
+# ══════════════════════════════════════════════════════════════════
+#  MPD STATION DETECTION — coordinate-based bounding boxes
+# ══════════════════════════════════════════════════════════════════
+
+STATION_BOUNDS = {
+    "Austin Peay Station":   (35.188, 35.264, -90.060, -89.877),
+    "Raines Station":        (34.994, 35.085, -90.185, -89.986),
+    "Mt. Moriah Station":    (35.050, 35.108, -89.990, -89.830),
+    "Crump Station":         (35.074, 35.193, -90.185, -89.957),
+    "Tillman Station":       (35.106, 35.193, -89.988, -89.888),
+    "North Main Station":    (35.124, 35.194, -90.086, -90.024),
+    "Airways Station":       (35.073, 35.116, -90.099, -89.946),
+    "Appling Farms Station": (35.117, 35.206, -89.888, -89.720),
+    "Ridgeway Station":      (34.994, 35.083, -89.990, -89.781),
+}
+
+def detect_station(lat, lng):
+    if not lat or not lng:
+        return None
+    for station, (min_lat, max_lat, min_lng, max_lng) in STATION_BOUNDS.items():
+        if min_lat <= lat <= max_lat and min_lng <= lng <= max_lng:
             return station
     return None
+
+
+# ══════════════════════════════════════════════════════════════════
+#  DISPATCHER DETECTION
+#  Memphis PD dispatchers use WP as part of their call sign
+#  e.g. "WP-12", "WP12", "Whiskey Papa"
+# ══════════════════════════════════════════════════════════════════
+
+def is_dispatcher_call(unit_text, transcript=""):
+    """
+    Returns True if the call originated from a dispatcher (WP unit).
+    Dispatchers use WP prefix in their call signs.
+    """
+    search_text = f"{unit_text or ''} {transcript or ''}".lower()
+    patterns = [
+        r'\bwp[-\s]?\d+\b',      # WP-12, WP 12, WP12
+        r'\bwp\b',                # standalone WP
+        r'\bwhiskey\s+papa\b',    # phonetic
+        r'\bdispatch\b',          # generic dispatch reference
+    ]
+    for pattern in patterns:
+        if re.search(pattern, search_text, re.IGNORECASE):
+            return True
+    return False
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -176,11 +294,6 @@ GANG_ZONES = {
         },
     ],
 }
-
-
-# ══════════════════════════════════════════════════════════════════
-#  GANG HOTSPOT DETECTOR
-# ══════════════════════════════════════════════════════════════════
 
 def check_gang_hotspot(location, title, city):
     if not location:
@@ -308,11 +421,6 @@ CODES_MEMPHIS = {
     "10-200": "police needed at this location",
 }
 
-
-# ══════════════════════════════════════════════════════════════════
-#  10-CODE TRANSLATOR
-# ══════════════════════════════════════════════════════════════════
-
 def translate_ten_codes(transcript, city):
     codes = CODES_MEMPHIS
     translated = transcript
@@ -387,7 +495,6 @@ def geocode_location(location_text, city):
     if not location_text:
         return CITIES[city]["center"]
 
-    # Step 1: Landmark lookup
     landmark = check_landmark(location_text)
     if landmark:
         return landmark
@@ -397,7 +504,6 @@ def geocode_location(location_text, city):
     google_key   = os.environ.get("GOOGLE_MAPS_KEY", "")
     geocodio_key = os.environ.get("GEOCODIO_KEY", "")
 
-    # Build query list for intersection handling
     location_queries = [location_text]
 
     cross_match = re.match(
@@ -410,9 +516,9 @@ def geocode_location(location_text, city):
     ) if not cross_match else None
 
     if cross_match:
-        number       = cross_match.group(1).strip()
-        street1      = cross_match.group(2).strip()
-        street2      = cross_match.group(3).strip()
+        number  = cross_match.group(1).strip()
+        street1 = cross_match.group(2).strip()
+        street2 = cross_match.group(3).strip()
         location_queries = [f"{street1} and {street2}", f"{number} {street1}", street1]
         print(f"  Numbered intersection — trying: {location_queries}")
     elif intersection_match:
@@ -425,7 +531,6 @@ def geocode_location(location_text, city):
         clat, clng = city_info["center"]
         return abs(lat - clat) + abs(lng - clng) < 2.0
 
-    # Step 2: Google Places API — best for named locations
     if google_key:
         try:
             r = requests.get(
@@ -446,12 +551,9 @@ def geocode_location(location_text, city):
                 if in_city(lat, lng):
                     print(f"  Geocoded (Places): {location_text} -> {lat}, {lng}")
                     return lat, lng
-            else:
-                print(f"  Places API: {data.get('status')} for: {location_text}")
         except Exception as e:
             print(f"  Places API error: {e}")
 
-    # Step 3: Google Geocoding API
     if google_key:
         for query in location_queries:
             try:
@@ -467,12 +569,9 @@ def geocode_location(location_text, city):
                     if in_city(lat, lng):
                         print(f"  Geocoded (Google): {query} -> {lat}, {lng}")
                         return lat, lng
-                else:
-                    print(f"  Google geocode: {data.get('status')} for: {query}")
             except Exception as e:
                 print(f"  Google geocoding error: {e}")
 
-    # Step 4: Geocodio
     if geocodio_key:
         for query in location_queries:
             try:
@@ -489,12 +588,9 @@ def geocode_location(location_text, city):
                     if in_city(lat, lng):
                         print(f"  Geocoded (Geocodio): {query} -> {lat}, {lng}")
                         return lat, lng
-                else:
-                    print(f"  Geocodio: no results for: {query}")
             except Exception as e:
                 print(f"  Geocodio error: {e}")
 
-    # Step 5: Nominatim fallback
     for query in location_queries:
         try:
             time.sleep(1)
@@ -551,7 +647,7 @@ def transcribe(audio_bytes):
                     prompt=(
                         "Police scanner radio dispatch Memphis Tennessee. "
                         "May contain codes like 10-4, 10-20, 10-33, 10-99, "
-                        "unit numbers, and Memphis street addresses."
+                        "unit numbers like WP-12, and Memphis street addresses."
                     )
                 )
             return result.text.strip()
@@ -585,7 +681,7 @@ Otherwise return:
   "title": "<6 words max incident description>",
   "location": "<street address or intersection>",
   "priority": "<one of: p1, p2, p3, medical, fire>",
-  "unit": "<unit numbers or designations mentioned>",
+  "unit": "<unit numbers or designations mentioned, including WP units>",
   "lat": <estimated latitude float>,
   "lng": <estimated longitude float>
 }}
@@ -603,6 +699,8 @@ in {city_label} to correct likely transcription errors in addresses before retur
 them. If you see a street name that does not exist in {city_label} but sounds similar
 to one that does, use the correct real street name instead. Always return the most
 likely correct real street address based on context clues in the transcript.
+
+WP units (e.g. WP-12, WP12) are dispatcher units — include them in the unit field.
 
 For lat/lng use city center as fallback: {center_lat}, {center_lng}"""
 
@@ -623,7 +721,7 @@ For lat/lng use city center as fallback: {center_lat}, {center_lng}"""
 # ══════════════════════════════════════════════════════════════════
 
 def save_incident(incident, city, transcript_original, transcript_translated,
-                  gang_hotspot, gang_zone, station):
+                  gang_hotspot, gang_zone, station, is_dispatch):
     headers = {
         "apikey":        SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -643,6 +741,7 @@ def save_incident(incident, city, transcript_original, transcript_translated,
         "gang_hotspot":   gang_hotspot,
         "gang_zone":      gang_zone,
         "station":        station,
+        "is_dispatch":    is_dispatch,
     }
     r = requests.post(
         f"{SUPABASE_URL}/rest/v1/incidents",
@@ -666,14 +765,12 @@ def run_city(city):
 
     while True:
         try:
-            # Step 1: Capture audio
             audio = capture_chunk(stream_url, CHUNK_SECONDS)
             if len(audio) < 1000:
                 print(f"[{label}] Audio chunk too small - skipping")
                 time.sleep(5)
                 continue
 
-            # Step 2: Transcribe
             transcript_raw = transcribe(audio)
             if not transcript_raw or len(transcript_raw.strip()) < 8:
                 print(f"[{label}] No speech detected - skipping")
@@ -681,50 +778,49 @@ def run_city(city):
 
             print(f"[{label}] Raw: {transcript_raw[:100]}...")
 
-            # Step 3: Translate 10-codes
             transcript_translated = translate_ten_codes(transcript_raw, city)
             if transcript_raw != transcript_translated:
                 print(f"[{label}] Translated: {transcript_translated[:100]}...")
 
-            # Step 4: Parse with GPT
             parsed = parse_incident(transcript_translated, city)
             if not parsed.get("incident"):
                 print(f"[{label}] No incident detected - skipping")
                 continue
 
-            # Step 5: Filter by priority — P1, P2, and Medical only
             priority = parsed.get("priority", "")
             if priority not in ("p1", "p2", "medical"):
-                print(f"[{label}] Skipping {priority.upper()} incident - below threshold")
+                print(f"[{label}] Skipping {priority.upper()} - below threshold")
                 continue
 
-            # Step 6: Geocode the location
             location = parsed.get("location")
             lat, lng = geocode_location(location, city)
             parsed["lat"] = lat
             parsed["lng"] = lng
 
-            # Step 7: Detect MPD station from unit number
-            unit    = parsed.get("unit", "")
-            station = detect_station(unit, transcript_translated)
+            station = detect_station(lat, lng)
             if station:
-                print(f"  Station detected: {station}")
+                print(f"  Station: {station}")
 
-            # Step 8: Check gang hotspot
+            unit        = parsed.get("unit", "")
+            is_dispatch = is_dispatcher_call(unit, transcript_translated)
+            if is_dispatch:
+                print(f"  📡 Dispatcher call detected: {unit}")
+
             gang_hotspot, gang_zone = check_gang_hotspot(
                 location, parsed.get("title"), city
             )
             if gang_hotspot:
                 print(f"  ⚠ Gang hotspot: {gang_zone}")
 
-            # Step 9: Save to Supabase
             save_incident(
                 parsed, city,
                 transcript_raw, transcript_translated,
-                gang_hotspot, gang_zone, station
+                gang_hotspot, gang_zone, station, is_dispatch
             )
+
             tags = []
-            if station:     tags.append(station)
+            if is_dispatch:  tags.append("📡 DISPATCH")
+            if station:      tags.append(station)
             if gang_hotspot: tags.append(f"⚠ {gang_zone}")
             tag_str = f" [{', '.join(tags)}]" if tags else ""
             print(
@@ -769,6 +865,14 @@ if __name__ == "__main__":
         exit(1)
 
     threads = []
+
+    # Start heatmap refresh thread
+    hm_thread = threading.Thread(target=heatmap_refresh_loop, daemon=True, name="heatmap")
+    hm_thread.start()
+    threads.append(hm_thread)
+    print("  Started: Heatmap refresh (daily)")
+
+    # Start city scanner threads
     for city in CITIES:
         t = threading.Thread(target=run_city, args=(city,), daemon=True, name=city)
         t.start()
