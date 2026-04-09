@@ -658,7 +658,7 @@ function showToast(inc){
     </div>`;
   el.addEventListener("click",()=>{selectIncident(inc.id);dismiss(el);});
   wrap.prepend(el);while(wrap.children.length>4)wrap.lastChild.remove();
-  setTimeout(()=>dismiss(el),isDispatch?12000:inc.gang_hotspot?10000:7000);
+setTimeout(()=>dismiss(el),inc.gang_hotspot?10000:7000);
 }
 function dismiss(el){el.classList.add("out");setTimeout(()=>el.remove(),280);}
 
