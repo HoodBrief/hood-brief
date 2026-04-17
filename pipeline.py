@@ -541,6 +541,47 @@ def apply_cad_corrections(location_text):
         pattern = rf'\b{re.escape(cad)}\b'
         result = re.sub(pattern, official, result, flags=re.IGNORECASE)
     return result
+# ══════════════════════════════════════════════════════════════════
+#  INCIDENT KEYWORD PRE-FILTER
+#  Screens transcripts before sending to GPT to reduce API costs
+#  Only transcripts containing at least one keyword reach GPT
+# ══════════════════════════════════════════════════════════════════
+
+INCIDENT_KEYWORDS = [
+    # Violent crimes
+    "shooting", "shot", "shots fired", "gun", "armed", "weapon",
+    "robbery", "robber", "rob", "assault", "assaulting", "fight",
+    "stabbing", "stab", "knife", "homicide", "murder", "body",
+    "kidnap", "hostage", "rape", "sexual",
+    # Officer safety
+    "officer needs help", "need assistance", "need backup", "backup",
+    "pursuit", "chase", "fleeing", "foot chase", "vehicle pursuit",
+    "person with a gun", "person with a weapon", "suspect",
+    # Dispatch language
+    "respond", "responding", "en route", "on scene", "units",
+    "dispatch", "dispatching", "priority", "code",
+    # Medical
+    "medical", "ambulance", "ems", "unconscious", "unresponsive",
+    "overdose", "cardiac", "breathing", "not breathing", "injured",
+    # Property crimes worth logging
+    "burglary", "breaking", "domestic", "disturbance",
+    "accident", "collision", "crash", "vehicle",
+    # Translated 10-codes that indicate incidents
+    "use caution", "crime in progress", "person with a gun",
+    "shooting", "stabbing", "pursuit in progress",
+    "officer needs help", "need assistance", "ambulance request",
+    "bomb threat", "shots", "alarm",
+]
+
+def has_incident_keywords(text):
+    """
+    Returns True if the transcript contains at least one incident keyword.
+    Case-insensitive. Prevents sending routine radio chatter to GPT.
+    """
+    text_lower = text.lower()
+    return any(kw in text_lower for kw in INCIDENT_KEYWORDS)
+
+
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -1079,43 +1120,15 @@ def parse_incident(transcript_translated, city):
     city_label             = city_info["label"]
     center_lat, center_lng = city_info["center"]
 
-    system_prompt = f"""You are a police incident parser for {city_label}.
-You receive transcripts of radio dispatch audio where 10-codes have already
-been translated to plain English. Extract structured incident data.
+    system_prompt = f"""Memphis PD scanner parser. 10-codes already translated. Return JSON only.
 
-Return ONLY a valid JSON object — no markdown, no explanation.
+No incident: {{"incident":false}}
 
-If the transcript contains no dispatched incident return:
-{{"incident": false}}
+Incident: {{"incident":true,"title":"<6 words>","location":"<street address or intersection>","priority":"<p1|p2|p3|medical|fire>","unit":"<unit numbers>"}}
 
-Otherwise return:
-{{
-  "incident": true,
-  "title": "<6 words max incident description>",
-  "location": "<street address or intersection>",
-  "priority": "<one of: p1, p2, p3, medical, fire>",
-  "unit": "<unit numbers or designations mentioned, including WP units>",
-  "lat": <estimated latitude float>,
-  "lng": <estimated longitude float>
-}}
+Priority: p1=violent/weapons/pursuit/officer needs help, p2=injury accident/burglary/domestic, p3=minor/noise/traffic, medical=EMS, fire=fire/hazmat
 
-Priority guide:
-  p1      = violent crime in progress, weapons, pursuit, officer needs help
-  p2      = serious but not immediate: accidents with injuries, burglary, domestic
-  p3      = low priority: noise complaints, minor traffic, suspicious person
-  medical = any EMS or medical emergency
-  fire    = any fire, smoke, explosion, hazmat
-
-IMPORTANT: Scanner audio is often transcribed imperfectly by speech recognition.
-Street names may be misheared or misspelled. Use your knowledge of real street names
-in {city_label} to correct likely transcription errors in addresses before returning
-them. If you see a street name that does not exist in {city_label} but sounds similar
-to one that does, use the correct real street name instead. Always return the most
-likely correct real street address based on context clues in the transcript.
-
-WP units (e.g. WP-12, WP12) are dispatcher units — include them in the unit field.
-
-For lat/lng use city center as fallback: {center_lat}, {center_lng}"""
+Fix misheared Memphis street names. WP units are dispatchers."""
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -1182,6 +1195,11 @@ def run_city(city):
             transcript_translated = translate_ten_codes(transcript_raw, city)
             if transcript_raw != transcript_translated:
                 print(f"[{label}] Translated: {transcript_translated[:120]}...")
+
+            # Pre-filter: skip GPT if no incident keywords found
+            if not has_incident_keywords(transcript_translated):
+                print(f"[{label}] No keywords — skipping GPT")
+                continue
 
             parsed = parse_incident(transcript_translated, city)
             if not parsed.get("incident"):
