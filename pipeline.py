@@ -31,16 +31,21 @@ import tempfile
 import threading
 import requests
 from datetime import datetime, timezone
-from openai import OpenAI
 from bs4 import BeautifulSoup
+from faster_whisper import WhisperModel
+from openai import OpenAI
 
 # ══════════════════════════════════════════════════════════════════
 #  CONFIG
 # ══════════════════════════════════════════════════════════════════
 
+# OPENAI_API_KEY still needed for GPT parsing (not Whisper)
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 SUPABASE_URL   = os.environ.get("SUPABASE_URL",   "")
 SUPABASE_KEY   = os.environ.get("SUPABASE_KEY",   "")
+
+# OpenAI client — used ONLY for GPT incident parsing (not transcription)
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 CITIES = {
     "memphis": {
@@ -54,7 +59,22 @@ CHUNK_SECONDS            = 30
 MAX_RETRIES              = 3
 FUGITIVE_REFRESH_SECONDS = 604800  # 7 days
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+# ── Faster-Whisper local model (runs on Railway CPU, zero API cost) ──
+# Model downloads on first startup (~150MB), cached for subsequent runs
+_whisper_model = None
+
+def get_whisper_model():
+    global _whisper_model
+    if _whisper_model is None:
+        print("[Whisper] Loading faster-whisper tiny model on CPU...")
+        _whisper_model = WhisperModel(
+            "tiny",
+            device="cpu",
+            compute_type="int8",  # Fastest on CPU, lowest memory
+        )
+        print("[Whisper] Model ready")
+    return _whisper_model
+
 
 # ══════════════════════════════════════════════════════════════════
 #  SUPABASE HELPERS
@@ -1083,31 +1103,48 @@ def capture_chunk(stream_url, duration=CHUNK_SECONDS):
 
 
 # ══════════════════════════════════════════════════════════════════
-#  WHISPER TRANSCRIPTION
+#  TRANSCRIPTION — faster-whisper (local CPU, zero API cost)
+#  Replaces OpenAI Whisper API to eliminate per-call charges
+#  Model: tiny (39M params) — fast on CPU, sufficient for scanner audio
 # ══════════════════════════════════════════════════════════════════
 
 def transcribe(audio_bytes):
+    tmp_path = None
     for attempt in range(MAX_RETRIES):
         try:
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
                 f.write(audio_bytes)
                 tmp_path = f.name
-            with open(tmp_path, "rb") as audio_file:
-                result = client.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=audio_file,
-                    language="en",
-                    prompt=(
-                        "Police scanner radio dispatch Memphis Tennessee MPD. "
-                        "May include codes like 10-4, 10-20, 10-33, 10-99, "
-                        "unit numbers like WP-12, 174, 156, "
-                        "and Memphis street addresses and intersections."
-                    )
-                )
-            return result.text.strip()
+
+            model = get_whisper_model()
+            segments, info = model.transcribe(
+                tmp_path,
+                language="en",
+                beam_size=1,           # Fastest decode
+                best_of=1,             # No sampling
+                temperature=0.0,       # Greedy decode
+                vad_filter=True,       # Skip silent sections automatically
+                vad_parameters={
+                    "min_silence_duration_ms": 500,
+                    "threshold": 0.5,
+                },
+                initial_prompt=(
+                    "Police scanner radio dispatch Memphis Tennessee MPD. "
+                    "Ten codes, unit numbers, street addresses."
+                ),
+            )
+            text = " ".join(s.text for s in segments).strip()
+            return text
+
         except Exception as e:
-            print(f"  Whisper attempt {attempt+1} failed: {e}")
+            print(f"  Transcribe attempt {attempt+1} failed: {e}")
             time.sleep(2)
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
     return ""
 
 
