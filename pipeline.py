@@ -33,19 +33,13 @@ import requests
 from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 from faster_whisper import WhisperModel
-from google import genai
-from google.genai import types as genai_types
 
 # ══════════════════════════════════════════════════════════════════
 #  CONFIG
 # ══════════════════════════════════════════════════════════════════
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 SUPABASE_URL   = os.environ.get("SUPABASE_URL",   "")
 SUPABASE_KEY   = os.environ.get("SUPABASE_KEY",   "")
-
-# Gemini client — free tier, replaces OpenAI GPT entirely
-gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
 CITIES = {
     "memphis": {
@@ -1149,45 +1143,183 @@ def transcribe(audio_bytes):
 
 
 # ══════════════════════════════════════════════════════════════════
-#  GEMINI INCIDENT PARSER
-#  Uses Gemini 2.0 Flash — free tier: 1,500 req/day, 1M tokens/day
-#  Replaces OpenAI GPT-4o-mini entirely
+#  RULE-BASED INCIDENT PARSER
+#  Zero API cost — regex + keyword matching
+#  Works on translated transcripts (10-codes already converted)
+#  Handles real scanner patterns: priority, location, unit extraction
 # ══════════════════════════════════════════════════════════════════
 
-GEMINI_SYSTEM_PROMPT = """Memphis PD scanner parser. 10-codes already translated. Return JSON only.
+# Priority 1 — violent, weapons, pursuit, officer needs help
+P1_PATTERNS = [
+    r'\bpriority\s*one\b', r'\bpriority\s*1\b', r'\bp[\-\s]?1\b',
+    r'\bshooting\b', r'\bshots?\s+fired\b', r'\bperson\s+with\s+a\s+gun\b',
+    r'\bperson\s+with\s+a\s+weapon\b', r'\barmed\b', r'\bgun\b',
+    r'\brobbery\b', r'\bpursuit\b', r'\bchase\b', r'\bfleeing\b',
+    r'\bfoot\s+chase\b', r'\bvehicle\s+pursuit\b',
+    r'\bofficer\s+needs\s+help\b', r'\bneed\s+assistance\b',
+    r'\bneed\s+backup\b', r'\brequesting\s+backup\b',
+    r'\baggravated\s+assault\b', r'\bhomicide\b', r'\bmurder\b',
+    r'\bkidnap\b', r'\bhostage\b', r'\bweapon\b', r'\bknife\b',
+    r'\bcrime\s+in\s+progress\b', r'\bin\s+progress\b',
+    r'\bstabbing\b', r'\bstab\b', r'\bbomb\s+threat\b',
+    r'\brape\b', r'\bsexual\s+assault\b',
+]
 
-No incident: {"incident":false}
+# Priority 2 — urgent but not immediate
+P2_PATTERNS = [
+    r'\bpriority\s*two\b', r'\bpriority\s*2\b', r'\bp[\-\s]?2\b',
+    r'\bdomestic\b', r'\bburglary\b', r'\bbreak[\-\s]?in\b',
+    r'\baccident\b', r'\bcollision\b', r'\bcrash\b',
+    r'\bassault\b', r'\bsuspicious\b', r'\bthreat\b',
+    r'\bhit\s+and\s+run\b', r'\bdrug\b', r'\bnarcotic\b',
+    r'\bvandalism\b', r'\btrespassing\b', r'\bstalking\b',
+    r'\bbreaking\s+and\s+entering\b',
+]
 
-Incident: {"incident":true,"title":"<6 words>","location":"<street address or intersection>","priority":"<p1|p2|p3|medical|fire>","unit":"<unit numbers>"}
+# Medical / EMS
+MEDICAL_PATTERNS = [
+    r'\bmedical\b', r'\bambulance\b', r'\bems\b',
+    r'\bunconsci\w+\b', r'\bunresponsive\b', r'\boverdos\w+\b',
+    r'\bnot\s+breathing\b', r'\bcardiac\b', r'\bseizure\b',
+    r'\binjur\w+\b', r'\bdown\b',
+]
 
-Priority: p1=violent/weapons/pursuit/officer needs help, p2=injury accident/burglary/domestic, p3=minor/noise/traffic, medical=EMS, fire=fire/hazmat
+# Noise / hallucination detection — reject these
+NOISE_PHRASES = [
+    "police scanner radio dispatch", "ten codes", "radio dispatch",
+    "scanner radio", "t-shirt", "vintage rock", "robot", "investment",
+    "sister", "harper", "real file", "thank you for", "your check",
+    "great investment", "15-year-old",
+]
 
-Fix misheared Memphis street names. WP units are dispatchers."""
+# Location extraction — ordered from most to least specific
+LOCATION_PATTERNS = [
+    # Numbered address + street with suffix
+    r'(?:at|on|to|near)\s+(\d+\s+[\w\s]{2,35}?\s+(?:ave(?:nue)?|st(?:reet)?|rd|road|blvd|boulevard|dr(?:ive)?|ln|lane|way|cir(?:cle)?|ct|court|pl(?:ace)?|pkwy|parkway|hwy|highway))',
+    # Pure intersection
+    r'((?:[NSEW]\s+)?[\w]+\s+(?:ave(?:nue)?|st(?:reet)?|rd|road|blvd|dr(?:ive)?|ln|way)\s+and\s+[\w\s]{3,25})',
+    # Numbered address no suffix (e.g. 5137 Finchwood)
+    r'(?:at|on|to|near|of)\s+(\d+\s+[A-Z][\w\s]{2,25})',
+    # Any numbered address
+    r'(\d{3,5}\s+[A-Z][\w]{3,20})',
+    # Interstate / highway
+    r'\b(interstate\s+\d+|i-\d+|highway\s+\d+|hwy\s+\d+|state\s+route\s+\d+)\b',
+]
+
+# Unit extraction
+UNIT_PATTERNS = [
+    r'\bunits?\s+([\d\w\-]+(?:\s*(?:and|,)\s*[\d\w\-]+)*)',
+    r'\b(wp[\-\s]?\d+)\b',
+    r'\b(\d{2,3})\s+(?:en\s+route|responding|on\s+scene|copy)',
+]
+
+# Title mapping — first keyword match wins
+TITLE_MAP = [
+    ('shooting',            'Shooting'),
+    ('shots fired',         'Shots Fired'),
+    ('shots',               'Shots Fired'),
+    ('homicide',            'Homicide'),
+    ('murder',              'Homicide Call'),
+    ('person with a gun',   'Armed Person'),
+    ('armed',               'Armed Subject'),
+    ('robbery',             'Robbery in Progress'),
+    ('kidnap',              'Kidnapping'),
+    ('hostage',             'Hostage Situation'),
+    ('pursuit',             'Vehicle Pursuit'),
+    ('chase',               'Pursuit in Progress'),
+    ('foot chase',          'Foot Pursuit'),
+    ('stabbing',            'Stabbing'),
+    ('aggravated assault',  'Aggravated Assault'),
+    ('assault',             'Assault'),
+    ('domestic',            'Domestic Disturbance'),
+    ('burglary',            'Burglary'),
+    ('break-in',            'Breaking and Entering'),
+    ('drug',                'Drug Activity'),
+    ('need assistance',     'Officer Needs Assistance'),
+    ('backup',              'Officer Needs Backup'),
+    ('bomb threat',         'Bomb Threat'),
+    ('suspicious',          'Suspicious Person'),
+    ('threat',              'Threat Report'),
+    ('accident',            'Traffic Accident'),
+    ('collision',           'Traffic Collision'),
+    ('crash',               'Vehicle Crash'),
+    ('hit and run',         'Hit and Run'),
+    ('medical',             'Medical Emergency'),
+    ('ambulance',           'Medical Emergency'),
+    ('overdose',            'Overdose'),
+    ('unconscious',         'Unconscious Person'),
+    ('weapon',              'Weapons Call'),
+    ('vandalism',           'Vandalism'),
+    ('trespass',            'Trespassing'),
+]
 
 def parse_incident(transcript_translated, city):
-    for attempt in range(MAX_RETRIES):
-        try:
-            response = gemini_client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=transcript_translated,
-                config=genai_types.GenerateContentConfig(
-                    system_instruction=GEMINI_SYSTEM_PROMPT,
-                    temperature=0.1,
-                    max_output_tokens=300,
-                    response_mime_type="application/json",
-                ),
-            )
-            text = response.text.strip()
-            # Strip any markdown fences if present
-            if text.startswith("```"):
-                text = text.split("```")[1]
-                if text.startswith("json"):
-                    text = text[4:]
-            return json.loads(text.strip())
-        except Exception as e:
-            print(f"  Gemini attempt {attempt+1} failed: {e}")
-            time.sleep(2)
-    return {"incident": False}
+    """
+    Rule-based incident parser — zero API cost.
+    Extracts priority, title, location, and unit from translated transcripts.
+    """
+    text = transcript_translated.strip()
+    tl   = text.lower()
+
+    # Reject if too short
+    if len(tl) < 15:
+        return {"incident": False}
+
+    # Reject hallucinations — noise phrases with no incident content
+    noise_hits = sum(1 for p in NOISE_PHRASES if p in tl)
+    has_incident_signal = (
+        any(re.search(p, tl, re.I) for p in P1_PATTERNS) or
+        any(re.search(p, tl, re.I) for p in P2_PATTERNS) or
+        any(re.search(p, tl, re.I) for p in MEDICAL_PATTERNS)
+    )
+    if noise_hits >= 1 and not has_incident_signal:
+        return {"incident": False}
+
+    # Determine priority
+    if any(re.search(p, tl, re.I) for p in P1_PATTERNS):
+        priority = "p1"
+    elif any(re.search(p, tl, re.I) for p in MEDICAL_PATTERNS):
+        priority = "medical"
+    elif any(re.search(p, tl, re.I) for p in P2_PATTERNS):
+        priority = "p2"
+    else:
+        return {"incident": False}
+
+    # Extract title — first keyword match
+    title = "Incident Response"
+    for keyword, label in TITLE_MAP:
+        if keyword in tl:
+            title = label
+            break
+
+    # Extract location — try each pattern
+    location = None
+    for pattern in LOCATION_PATTERNS:
+        m = re.search(pattern, text, re.I)
+        if m:
+            raw = m.group(1).strip()
+            # Clean up and title-case
+            location = re.sub(r'\s+', ' ', raw).strip().title()
+            # Filter out false positives that are too short
+            if len(location) > 4:
+                break
+            location = None
+
+    # Extract unit
+    unit = None
+    for pattern in UNIT_PATTERNS:
+        m = re.search(pattern, tl, re.I)
+        if m:
+            unit = m.group(1).strip().upper()
+            break
+
+    return {
+        "incident": True,
+        "title":    title,
+        "location": location or "Location unknown",
+        "priority": priority,
+        "unit":     unit or "",
+    }
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -1316,7 +1448,6 @@ if __name__ == "__main__":
     print("╚══════════════════════════════════════════╝")
 
     errors = []
-    if not GEMINI_API_KEY:   errors.append("GEMINI_API_KEY not set")
     if not SUPABASE_URL:   errors.append("SUPABASE_URL not set")
     if not SUPABASE_KEY:   errors.append("SUPABASE_KEY not set")
     for city, info in CITIES.items():
