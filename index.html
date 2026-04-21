@@ -1,742 +1,1529 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Hood Brief">
-<meta name="theme-color" content="#06080f">
-<title>Hood Brief</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
-<style>
-:root {
-  --bg:          #06080f;
-  --surface:     #0c1018;
-  --surface2:    #121820;
-  --surface3:    #1a2230;
-  --border:      rgba(255,255,255,0.07);
-  --border2:     rgba(255,255,255,0.13);
-  --text:        #e2e8f4;
-  --text2:       #a0b0c8;
-  --text3:       #6b7d96;
-  --gold:        #f5c842;
-  --gold-dim:    rgba(245,200,66,0.12);
-  --gold-bdr:    rgba(245,200,66,0.28);
-  --red:         #ff3d4f;
-  --red-dim:     rgba(255,61,79,0.12);
-  --red-bdr:     rgba(255,61,79,0.28);
-  --amber:       #f59e0b;
-  --amber-dim:   rgba(245,158,11,0.12);
-  --amber-bdr:   rgba(245,158,11,0.28);
-  --green:       #10d98a;
-  --green-dim:   rgba(16,217,138,0.10);
-  --green-bdr:   rgba(16,217,138,0.22);
-  --blue:        #3d9eff;
-  --blue-dim:    rgba(61,158,255,0.10);
-  --blue-bdr:    rgba(61,158,255,0.22);
-  --gang:        #ff6b1a;
-  --gang-dim:    rgba(255,107,26,0.12);
-  --gang-bdr:    rgba(255,107,26,0.30);
-  --teal:        #14b8a6;
-  --teal-dim:    rgba(20,184,166,0.12);
-  --teal-bdr:    rgba(20,184,166,0.30);
-  --memphis:     #ff3d4f;
-  --font:        'Space Grotesk', sans-serif;
-  --mono:        'Space Mono', monospace;
-}
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-html,body{height:100%;height:100dvh;background:var(--bg);color:var(--text);font-family:var(--font);overflow:hidden;-webkit-tap-highlight-color:transparent;}
+"""
+Hood Brief — Scanner Pipeline
+Memphis, TN — MPD Only
+─────────────────────────────────────────────────────────────────
+Features:
+  • 10-code translation (Memphis codes)
+  • CAD street name corrections (Shelby County 911 NG911 GDB)
+  • Geocoding chain:
+      0. Landmark lookup table
+      1. Shelby County 911 address database (Supabase)
+      2. Google Places API (named locations)
+      3. Google Geocoding API (street addresses)
+      4. Geocodio (US address fallback)
+      5. Nominatim (free fallback)
+      6. City center (last resort)
+  • Intersection handling (numbered + pure intersections)
+  • MPD station detection (coordinate bounding boxes)
+  • Gang hotspot detection
+  • Dispatcher call detection (WP units)
+  • Heatmap: static P1 points loaded into Supabase on startup
+  • Fugitive scraper: weekly pull from memphismostwanted.org
+  • P1, P2, and Medical incidents only
+─────────────────────────────────────────────────────────────────
+"""
 
-/* HEADER */
-#header{display:flex;align-items:center;gap:7px;padding:0 10px;height:50px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;z-index:300;position:relative;}
-.logo-hood{font-size:18px;font-weight:700;color:var(--gold);letter-spacing:-0.5px;}
-.logo-brief{font-size:18px;font-weight:300;color:var(--text);letter-spacing:-0.5px;}
-.live-badge{display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--red);background:var(--red-dim);border:1px solid var(--red-bdr);padding:3px 8px;border-radius:3px;}
-.live-dot{width:5px;height:5px;border-radius:50%;background:var(--red);animation:blink 1.3s ease-in-out infinite;}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:0.2}}
-.city-label{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:1px;color:var(--memphis);text-transform:uppercase;}
-.map-btn{padding:4px 8px;font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;border-radius:3px;border:1px solid var(--border2);color:var(--text2);background:transparent;cursor:pointer;transition:all 0.15s;flex-shrink:0;white-space:nowrap;}
-.map-btn.active{color:var(--bg);border-color:transparent;}
-#district-btn.active{background:var(--gold);}
-#heatmap-btn.active{background:var(--red);}
-#fugitive-btn.active{background:var(--teal);}
-#clock{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--text3);font-variant-numeric:tabular-nums;}
-#conn-dot{width:7px;height:7px;border-radius:50%;background:var(--text3);transition:all 0.4s;flex-shrink:0;}
-#conn-dot.ok{background:var(--green);box-shadow:0 0 5px var(--green);}
-#conn-dot.err{background:var(--red);}
+import os
+import re
+import time
+import json
+import tempfile
+import threading
+import requests
+from datetime import datetime, timezone
+from bs4 import BeautifulSoup
+from faster_whisper import WhisperModel
 
-/* RADIUS BAR */
-#radius-bar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--surface2);border-bottom:1px solid var(--border);flex-shrink:0;}
-#addr-wrap{flex:1;display:flex;flex-direction:column;gap:0;min-width:0;}
-#addr-row{display:flex;gap:8px;align-items:center;}
-#addr-input{flex:1;background:var(--surface3);border:1px solid var(--border2);border-radius:5px;padding:7px 11px;font-family:var(--font);font-size:13px;color:var(--text);outline:none;transition:border-color 0.15s;min-width:0;}
-#addr-input::placeholder{color:var(--text3);}
-#addr-input:focus{border-color:var(--gold);}
-#search-btn{padding:7px 13px;background:var(--gold);color:var(--bg);border:none;border-radius:5px;font-family:var(--font);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:opacity 0.15s,transform 0.1s;}
-#search-btn:hover{opacity:0.9;}#search-btn:active{transform:scale(0.97);}#search-btn:disabled{opacity:0.4;cursor:not-allowed;}
-#clear-btn{padding:7px 10px;background:transparent;border:1px solid var(--border2);border-radius:5px;color:var(--text2);font-size:12px;cursor:pointer;white-space:nowrap;display:none;flex-shrink:0;font-family:var(--font);transition:all 0.15s;}
-#clear-btn:hover{border-color:var(--red);color:var(--red);}
-#clear-btn.visible{display:block;}
-#radius-status{font-size:11px;font-family:var(--mono);color:var(--gold);display:none;margin-top:4px;}
-#radius-status.visible{display:block;}
-#geo-error{font-family:var(--mono);font-size:10px;color:var(--red);display:none;margin-top:4px;}
-#geo-error.visible{display:block;}
+# ══════════════════════════════════════════════════════════════════
+#  CONFIG
+# ══════════════════════════════════════════════════════════════════
 
-/* FILTER BARS */
-.filter-bar{display:flex;gap:5px;padding:6px 11px;background:var(--surface);border-bottom:1px solid var(--border);overflow-x:auto;flex-shrink:0;scrollbar-width:none;}
-.filter-bar::-webkit-scrollbar{display:none;}
-.filter-bar-label{font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:1px;color:var(--text3);text-transform:uppercase;white-space:nowrap;display:flex;align-items:center;padding-right:6px;flex-shrink:0;border-right:1px solid var(--border2);margin-right:2px;}
-.chip{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;padding:4px 10px;border-radius:3px;border:1px solid var(--border2);color:var(--text2);background:transparent;white-space:nowrap;cursor:pointer;transition:all 0.13s;flex-shrink:0;}
-.chip:active{transform:scale(0.96);}
-.chip.active{border-color:transparent;color:var(--bg);}
-.chip[data-f="all"].active{background:var(--gold);}
-.chip[data-f="p1"].active{background:var(--red);}
-.chip[data-f="p2"].active{background:var(--amber);}
-.chip[data-f="medical"].active{background:var(--blue);}
-.chip[data-f="gang"].active{background:var(--gang);}
-.dchip{font-size:9px;padding:4px 9px;}
-.dchip.active{color:var(--bg)!important;border-color:transparent!important;}
+SUPABASE_URL   = os.environ.get("SUPABASE_URL",   "")
+SUPABASE_KEY   = os.environ.get("SUPABASE_KEY",   "")
 
-/* LAYOUT */
-#main{display:flex;overflow:hidden;}
-@media(min-width:720px){
-  #main{flex-direction:row;height:calc(100dvh - 50px - 52px - 36px - 36px);}
-  #feed-panel{width:370px;min-width:370px;border-right:1px solid var(--border);}
-  #map-panel{flex:1;}
-}
-@media(max-width:719px){
-  #main{flex-direction:column;height:calc(100dvh - 50px - 68px - 36px - 36px);}
-  #feed-panel{height:48%;border-bottom:1px solid var(--border);}
-  #map-panel{flex:1;min-height:0;}
+CITIES = {
+    "memphis": {
+        "label":      "Memphis, TN",
+        "stream_url": os.environ.get("MEMPHIS_STREAM_URL", ""),
+        "center":     (35.1495, -90.0490),
+    },
 }
 
-/* FEED */
-#feed-panel{display:flex;flex-direction:column;overflow:hidden;background:var(--bg);}
-#feed-header{display:flex;align-items:center;justify-content:space-between;padding:5px 12px;background:var(--surface2);border-bottom:1px solid var(--border);font-family:var(--mono);font-size:10px;letter-spacing:1px;color:var(--text3);text-transform:uppercase;flex-shrink:0;}
-#feed-count{color:var(--gold);font-weight:700;}
-#feed-scroll{flex:1;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--surface3) transparent;}
-#feed-scroll::-webkit-scrollbar{width:3px;}
-#feed-scroll::-webkit-scrollbar-thumb{background:var(--surface3);}
+CHUNK_SECONDS            = 30
+MAX_RETRIES              = 3
+FUGITIVE_REFRESH_SECONDS = 604800  # 7 days
 
-/* INCIDENT CARD */
-.incident{padding:11px 12px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.1s;position:relative;animation:slideIn 0.25s ease forwards;}
-@keyframes slideIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
-.incident::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:transparent;transition:background 0.15s;}
-.incident:hover{background:var(--surface2);}
-.incident.selected{background:rgba(245,200,66,0.04);}
-.incident.selected::before{background:var(--gold);}
-.incident.in-radius{background:rgba(245,200,66,0.03);}
-.incident.is-gang::before{background:var(--gang);}
+# ── Faster-Whisper local model (runs on Railway CPU, zero API cost) ──
+# Model downloads on first startup (~150MB), cached for subsequent runs
+_whisper_model = None
 
-.inc-row1{display:flex;align-items:center;gap:5px;margin-bottom:5px;flex-wrap:wrap;}
-.badge{font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:2px 6px;border-radius:2px;flex-shrink:0;}
-.badge-p1{background:var(--red-dim);color:var(--red);border:1px solid var(--red-bdr);}
-.badge-p2{background:var(--amber-dim);color:var(--amber);border:1px solid var(--amber-bdr);}
-.badge-medical{background:var(--blue-dim);color:var(--blue);border:1px solid var(--blue-bdr);}
-50%{opacity:0.6}}
-.station-tag{font-family:var(--mono);font-size:9px;font-weight:700;padding:2px 6px;border-radius:2px;flex-shrink:0;}
-.gang-tag{font-family:var(--mono);font-size:9px;font-weight:700;color:var(--gang);background:var(--gang-dim);border:1px solid var(--gang-bdr);padding:2px 6px;border-radius:2px;flex-shrink:0;}
-.radius-tag{font-family:var(--mono);font-size:9px;font-weight:700;color:var(--gold);background:var(--gold-dim);border:1px solid var(--gold-bdr);padding:2px 6px;border-radius:2px;}
-.new-tag{font-family:var(--mono);font-size:9px;font-weight:700;color:var(--green);background:var(--green-dim);border:1px solid var(--green-bdr);padding:2px 6px;border-radius:2px;overflow:hidden;white-space:nowrap;animation:fadeTag 5s forwards;}
-@keyframes fadeTag{0%,65%{opacity:1;max-width:60px;padding:2px 6px;}100%{opacity:0;max-width:0;padding:0;border:none;}}
-.inc-time{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3);font-variant-numeric:tabular-nums;flex-shrink:0;}
-.inc-title{font-size:14px;font-weight:600;color:var(--text);line-height:1.3;margin-bottom:4px;}
-.inc-loc{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text2);margin-bottom:3px;}
-.inc-units{font-family:var(--mono);font-size:10px;color:var(--text3);}
-.inc-gang-zone{font-family:var(--mono);font-size:10px;color:var(--gang);margin-top:4px;padding:3px 7px;background:var(--gang-dim);border-left:2px solid var(--gang);border-radius:0 2px 2px 0;}
-.state-msg{padding:36px 18px;text-align:center;font-family:var(--mono);font-size:11px;letter-spacing:1px;color:var(--text3);text-transform:uppercase;line-height:1.8;}
-.state-msg .ico{font-size:26px;display:block;margin-bottom:10px;}
+def get_whisper_model():
+    global _whisper_model
+    if _whisper_model is None:
+        print("[Whisper] Loading faster-whisper base model on CPU...")
+        _whisper_model = WhisperModel(
+            "base",
+            device="cpu",
+            compute_type="int8",  # Fastest on CPU, lowest memory
+        )
+        print("[Whisper] Model ready")
+    return _whisper_model
 
-/* MAP */
-#map-panel{position:relative;}
-#map{width:100%;height:100%;}
-.leaflet-tile-pane{filter:brightness(0.5) saturate(0.35) hue-rotate(185deg);}
-.leaflet-container{background:#040608;}
-.leaflet-popup-content-wrapper{background:var(--surface2)!important;color:var(--text)!important;border:1px solid var(--border2)!important;border-radius:7px!important;box-shadow:0 16px 48px rgba(0,0,0,0.85)!important;font-family:var(--font)!important;}
-.leaflet-popup-tip{background:var(--surface2)!important;}
-.leaflet-popup-content{margin:13px 15px!important;min-width:210px;}
-.leaflet-popup-close-button{color:var(--text2)!important;font-size:16px!important;}
 
-/* POPUP STYLES */
-.p-badge{display:inline-block;font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:2px 7px;border-radius:2px;margin-bottom:7px;}
-.p-title{font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px;line-height:1.3;}
-.p-row{font-size:12px;color:var(--text2);margin-bottom:4px;display:flex;gap:6px;}
-.p-row b{color:var(--text);font-weight:500;}
-.p-station{font-family:var(--mono);font-size:11px;margin-top:6px;padding:4px 8px;border-radius:3px;}
-.p-gang{font-size:11px;color:var(--gang);font-weight:600;margin-top:6px;padding:5px 8px;background:var(--gang-dim);border:1px solid var(--gang-bdr);border-radius:3px;}
-.p-dist{font-family:var(--mono);font-size:11px;color:var(--gold);margin-top:6px;padding-top:6px;border-top:1px solid var(--border);}
-.p-tx{font-size:11px;color:var(--text3);font-style:italic;line-height:1.5;margin-top:6px;padding-top:6px;border-top:1px solid var(--border);}
+# ══════════════════════════════════════════════════════════════════
+#  SUPABASE HELPERS
+# ══════════════════════════════════════════════════════════════════
 
-/* FUGITIVE POPUP */
-.f-photo{width:80px;height:100px;object-fit:cover;border-radius:4px;float:right;margin:0 0 8px 10px;border:1px solid var(--teal-bdr);}
-.f-header{font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:1px;color:var(--teal);text-transform:uppercase;margin-bottom:6px;padding:2px 7px;background:var(--teal-dim);border:1px solid var(--teal-bdr);border-radius:2px;display:inline-block;}
-.f-name{font-size:14px;font-weight:700;color:var(--text);margin-bottom:3px;}
-.f-dob{font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:6px;}
-.f-charges{font-size:11px;color:var(--red);font-weight:600;margin-bottom:6px;line-height:1.4;}
-.f-addr{font-size:11px;color:var(--text2);margin-bottom:4px;}
-.f-warrant{font-family:var(--mono);font-size:10px;color:var(--text3);}
-.f-tip{display:block;margin-top:8px;padding:5px 10px;background:var(--teal-dim);border:1px solid var(--teal-bdr);border-radius:4px;color:var(--teal);font-family:var(--mono);font-size:10px;font-weight:700;text-decoration:none;text-align:center;letter-spacing:0.5px;}
-.f-tip:hover{background:var(--teal);color:var(--bg);}
-
-/* MAP OVERLAYS */
-#map-stats{position:absolute;bottom:28px;right:10px;z-index:1000;display:flex;flex-direction:column;gap:5px;pointer-events:none;}
-.stat-pill{background:rgba(6,8,15,0.88);border:1px solid var(--border2);border-radius:3px;padding:4px 10px;font-family:var(--mono);font-size:10px;letter-spacing:0.5px;color:var(--text2);backdrop-filter:blur(8px);text-transform:uppercase;}
-.stat-pill b{color:var(--gold);}
-#radius-banner{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:1000;background:rgba(6,8,15,0.92);border:1px solid var(--gold-bdr);border-radius:5px;padding:6px 14px;font-family:var(--mono);font-size:11px;color:var(--gold);backdrop-filter:blur(8px);white-space:nowrap;display:none;pointer-events:none;}
-#radius-banner.visible{display:block;}
-#heatmap-legend{position:absolute;bottom:28px;left:10px;z-index:1000;background:rgba(6,8,15,0.92);border:1px solid var(--border2);border-radius:5px;padding:8px 12px;backdrop-filter:blur(8px);display:none;pointer-events:none;}
-#heatmap-legend.visible{display:block;}
-.heat-title{font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:1px;color:var(--text3);text-transform:uppercase;margin-bottom:6px;}
-.heat-bar{width:120px;height:8px;border-radius:4px;background:linear-gradient(to right,#0000ff,#00ffff,#00ff00,#ffff00,#ff0000);margin-bottom:4px;}
-.heat-labels{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--text3);}
-.heat-note{font-size:10px;color:var(--text3);margin-top:6px;font-family:var(--mono);}
-#district-legend{position:absolute;bottom:28px;left:10px;z-index:1000;background:rgba(6,8,15,0.92);border:1px solid var(--border2);border-radius:5px;padding:8px 10px;backdrop-filter:blur(8px);display:none;pointer-events:none;min-width:160px;}
-#district-legend.visible{display:block;}
-.legend-title{font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:1px;color:var(--text3);text-transform:uppercase;margin-bottom:6px;}
-.legend-item{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--text2);margin-bottom:3px;}
-.legend-swatch{width:12px;height:12px;border-radius:2px;flex-shrink:0;}
-#fugitive-legend{position:absolute;bottom:28px;left:10px;z-index:1000;background:rgba(6,8,15,0.92);border:1px solid var(--teal-bdr);border-radius:5px;padding:8px 12px;backdrop-filter:blur(8px);display:none;pointer-events:none;}
-#fugitive-legend.visible{display:block;}
-.fug-legend-title{font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:1px;color:var(--teal);text-transform:uppercase;margin-bottom:4px;}
-.fug-legend-note{font-size:10px;color:var(--text3);font-family:var(--mono);}
-
-/* TOAST */
-#toast-wrap{position:fixed;top:58px;right:12px;z-index:9000;display:flex;flex-direction:column;gap:6px;pointer-events:none;max-width:290px;}
-.toast{display:flex;align-items:flex-start;gap:9px;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:10px 12px;pointer-events:all;cursor:pointer;animation:tIn 0.25s ease forwards;}
-.toast.gang-toast{border-color:var(--gang-bdr);}
-.toast.out{animation:tOut 0.25s ease forwards;}
-@keyframes tIn{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
-@keyframes tOut{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(16px)}}
-.t-dot{width:7px;height:7px;border-radius:50%;margin-top:4px;flex-shrink:0;}
-.t-city{font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:2px;}
-.t-title{font-size:13px;font-weight:600;color:var(--text);}
-.t-loc{font-size:11px;color:var(--text2);margin-top:2px;}
-.t-gang{font-size:10px;color:var(--gang);font-family:var(--mono);margin-top:3px;}
-
-/* BOOT */
-#boot-overlay{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;z-index:9999;}
-#boot-overlay.gone{display:none;}
-.boot-logo span:first-child{font-size:32px;font-weight:700;color:var(--gold);}
-.boot-logo span:last-child{font-size:32px;font-weight:300;color:var(--text);}
-.boot-msg{font-family:var(--mono);font-size:12px;color:var(--text2);letter-spacing:1px;text-transform:uppercase;}
-.spinner{width:32px;height:32px;border:2px solid var(--surface3);border-top-color:var(--gold);border-radius:50%;animation:spin 0.75s linear infinite;}
-@keyframes spin{to{transform:rotate(360deg);}}
-.leaflet-control-zoom a{background:var(--surface2)!important;color:var(--text)!important;border-color:var(--border2)!important;}
-.leaflet-control-zoom a:hover{background:var(--surface3)!important;}
-</style>
- <!-- Google Analytics -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-YH09H4RJ1P"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'G-YH09H4RJ1P');
-  </script>
-</head>
-<body>
-<script>
-const CONFIG = {
-  SUPABASE_URL:      "https://xnjulaohljlgajxfrqrb.supabase.co",
-  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhuanVsYW9obGpsZ2FqeGZycXJiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1ODQxNjUsImV4cCI6MjA5MTE2MDE2NX0.Q9JWRXjw0q8I6jQM9-Pe0YEMpO8NY7vtW_Bk9hJL8Kw",
-  INITIAL_LOAD: 100,
-  RADIUS_MILES: 5,
-  CITY: { label:"Memphis, TN", center:[35.1495,-90.0490], zoom:12 }
-};
-
-const MPD_DISTRICTS = {
-  "Austin Peay":  {color:"#6366f1",coords:[[35.263206,-89.926281],[35.249409,-89.924361],[35.243154,-89.922836],[35.242825,-89.912095],[35.23383,-89.904292],[35.234944,-89.895877],[35.238384,-89.897598],[35.242726,-89.896935],[35.242168,-89.884736],[35.241453,-89.880376],[35.240052,-89.882021],[35.237477,-89.884],[35.235625,-89.886473],[35.22656,-89.885276],[35.225112,-89.882105],[35.220179,-89.882936],[35.217637,-89.883086],[35.213391,-89.880288],[35.207295,-89.887519],[35.195657,-89.878941],[35.188931,-89.895507],[35.191578,-90.031483],[35.213623,-90.05912],[35.216271,-90.045973],[35.227156,-90.036659],[35.233686,-90.016533],[35.258786,-90.020799],[35.255669,-90.01391],[35.244313,-90.012698],[35.242544,-90.012929],[35.254131,-89.991393],[35.261442,-89.984068],[35.25253,-89.975357],[35.258787,-89.961611],[35.263206,-89.926281]]},
-  "Raines":       {color:"#ec4899",coords:[[35.081923,-90.144304],[35.08215,-90.094182],[35.080937,-90.078247],[35.082517,-90.07412],[35.079514,-90.068195],[35.072822,-90.027985],[35.07295,-90.010233],[35.076148,-89.992542],[35.056254,-89.98999],[35.004503,-89.9898],[35.005393,-89.989889],[34.995598,-89.989904],[34.994937,-90.010264],[34.994912,-90.1084],[34.994688,-90.137881],[35.006006,-90.146435],[35.011961,-90.184726],[35.050587,-90.17436],[35.077017,-90.18631],[35.084752,-90.161829],[35.081923,-90.144304]]},
-  "Mt. Moriah":   {color:"#14b8a6",coords:[[35.106537,-89.893677],[35.106122,-89.890375],[35.082848,-89.830963],[35.082874,-89.840361],[35.066818,-89.843593],[35.071738,-89.856476],[35.066104,-89.866398],[35.051384,-89.866326],[35.050136,-89.869213],[35.05085,-89.897409],[35.052802,-89.972685],[35.052089,-89.981398],[35.0537,-89.989828],[35.056254,-89.98999],[35.07577,-89.98562],[35.080498,-89.955853],[35.083806,-89.953245],[35.088501,-89.949648],[35.099347,-89.949165],[35.104749,-89.947993],[35.105182,-89.946143],[35.107298,-89.946055],[35.107073,-89.914047],[35.106537,-89.893677]]},
-  "Crump":        {color:"#f97316",coords:[[35.158647,-89.968797],[35.15798,-89.980223],[35.109892,-89.984828],[35.108398,-90.031817],[35.108087,-90.077677],[35.078393,-90.097939],[35.081337,-90.184608],[35.113844,-90.174217],[35.124648,-90.162894],[35.131068,-90.138897],[35.124454,-90.050203],[35.124241,-90.040833],[35.130434,-90.024101],[35.143791,-90.022577],[35.157699,-90.020557],[35.186936,-90.017415],[35.192454,-90.001072],[35.190549,-89.956586],[35.178457,-89.96201],[35.158647,-89.968797]]},
-  "Tillman":      {color:"#a855f7",coords:[[35.190899,-89.919243],[35.162829,-89.898193],[35.142536,-89.88837],[35.107505,-89.889295],[35.106537,-89.893677],[35.107739,-89.940531],[35.107969,-89.946034],[35.115009,-89.949661],[35.11528,-89.96341],[35.114917,-89.965823],[35.115706,-89.98448],[35.128947,-89.983889],[35.143341,-89.982461],[35.154414,-89.98073],[35.157965,-89.971958],[35.158874,-89.967823],[35.162885,-89.962568],[35.178457,-89.96201],[35.190549,-89.956516],[35.192522,-89.929725],[35.190899,-89.919243]]},
-  "North Main":   {color:"#22c55e",coords:[[35.189712,-90.037948],[35.191578,-90.031483],[35.186936,-90.017415],[35.157699,-90.020557],[35.140226,-90.023303],[35.130434,-90.024101],[35.131799,-90.029743],[35.130534,-90.033608],[35.126119,-90.037849],[35.124574,-90.039575],[35.124454,-90.050203],[35.12464,-90.058515],[35.124717,-90.065663],[35.1252,-90.072769],[35.12768,-90.076005],[35.138414,-90.06658],[35.154221,-90.063213],[35.182744,-90.060904],[35.193685,-90.044835],[35.189712,-90.037948]]},
-  "Airways":      {color:"#eab308",coords:[[35.114917,-89.965823],[35.115009,-89.949661],[35.099347,-89.949165],[35.083806,-89.953245],[35.080498,-89.955853],[35.076362,-89.978079],[35.07464,-90.000777],[35.071428,-90.018971],[35.072822,-90.027985],[35.076697,-90.044619],[35.080245,-90.061682],[35.080371,-90.078776],[35.084694,-90.091771],[35.108115,-90.078298],[35.108398,-90.031817],[35.10894,-90.000649],[35.109313,-89.989828],[35.10621,-89.985089],[35.114917,-89.965823]]},
-  "Appling Farms":{color:"#06b6d4",coords:[[35.205372,-89.832451],[35.204449,-89.72018],[35.18436,-89.725649],[35.191326,-89.737507],[35.195037,-89.755526],[35.180179,-89.75612],[35.174546,-89.76132],[35.163323,-89.763304],[35.157443,-89.761515],[35.143088,-89.762379],[35.12318,-89.758825],[35.127406,-89.773712],[35.117448,-89.778828],[35.117194,-89.802547],[35.118533,-89.834155],[35.098514,-89.836122],[35.108901,-89.887897],[35.174841,-89.906733],[35.197322,-89.841714],[35.205372,-89.832451]]},
-  "Ridgeway":     {color:"#ef4444",coords:[[35.082875,-89.8403],[35.066363,-89.823425],[35.067508,-89.812306],[35.064019,-89.799848],[35.063436,-89.7852],[35.059137,-89.785204],[35.054625,-89.78409],[35.049837,-89.770664],[35.047934,-89.783456],[35.038714,-89.791247],[35.034741,-89.781784],[35.017976,-89.828223],[35.012876,-89.832401],[35.008435,-89.848551],[34.998289,-89.848319],[34.994605,-89.901387],[35.005393,-89.989889],[35.052819,-89.972204],[35.05599,-89.866061],[35.078911,-89.842038],[35.082875,-89.8403]]}
-};
-
-const STATION_NAMES = Object.keys(MPD_DISTRICTS);
-const STATION_BOUNDS = {
-  "Austin Peay Station":   [35.188,35.264,-90.060,-89.877],
-  "Raines Station":        [34.994,35.085,-90.185,-89.986],
-  "Mt. Moriah Station":    [35.050,35.108,-89.990,-89.830],
-  "Crump Station":         [35.074,35.193,-90.185,-89.957],
-  "Tillman Station":       [35.106,35.193,-89.988,-89.888],
-  "North Main Station":    [35.124,35.194,-90.086,-90.024],
-  "Airways Station":       [35.073,35.116,-90.099,-89.946],
-  "Appling Farms Station": [35.117,35.206,-89.888,-89.720],
-  "Ridgeway Station":      [34.994,35.083,-89.990,-89.781],
-};
-function detectStation(lat,lng){if(!lat||!lng)return null;for(const[n,[a,b,c,d]]of Object.entries(STATION_BOUNDS))if(lat>=a&&lat<=b&&lng>=c&&lng<=d)return n;return null;}
-function getStationColor(n){if(!n)return null;const k=STATION_NAMES.find(x=>n.includes(x));return k?MPD_DISTRICTS[k].color:null;}
-</script>
-
-<div id="boot-overlay">
-  <div class="boot-logo"><span>Hood</span><span>Brief</span></div>
-  <div class="spinner"></div>
-  <div class="boot-msg" id="boot-msg">Connecting…</div>
-</div>
-<div id="toast-wrap"></div>
-
-<div id="header">
-  <span class="logo-hood">Hood</span><span class="logo-brief">Brief</span>
-  <div class="live-badge"><div class="live-dot"></div>LIVE</div>
-  <span class="city-label">Memphis</span>
-  <button id="district-btn" class="map-btn" onclick="toggleDistricts()">Districts</button>
-  <button id="heatmap-btn"  class="map-btn" onclick="toggleHeatmap()">🔥 Heat Map</button>
-  <button id="fugitive-btn" class="map-btn" onclick="toggleFugitives()">⚠ Fugitives</button>
-  <div id="conn-dot" title="Connection status"></div>
-  <div id="clock"></div>
-</div>
-
-<div id="radius-bar">
-  <div id="addr-wrap">
-    <div id="addr-row">
-      <input id="addr-input" type="text" placeholder="Enter address for 5-mile radius search…" autocomplete="off" autocorrect="off" spellcheck="false">
-      <button id="search-btn">Search</button>
-      <button id="clear-btn">✕ Clear</button>
-    </div>
-    <div id="geo-error">Could not find that address. Try being more specific.</div>
-    <div id="radius-status"></div>
-  </div>
-</div>
-
-<div class="filter-bar" id="filter-bar">
-  <span class="filter-bar-label">Type</span>
-  <div class="chip active" data-f="all">All</div>
-  <div class="chip" data-f="p1">Priority 1</div>
-  <div class="chip" data-f="p2">Priority 2</div>
-  <div class="chip" data-f="medical">Medical</div>
-  <div class="chip" data-f="gang">⚠ Gang</div></div>
-
-<div class="filter-bar" id="district-filter-bar">
-  <span class="filter-bar-label">District</span>
-  <div class="chip dchip active" data-d="all" style="color:var(--text2)">All</div>
-</div>
-
-<div id="main">
-  <div id="feed-panel">
-    <div id="feed-header"><span>Incidents</span><span id="feed-count">—</span></div>
-    <div id="feed-scroll"><div class="state-msg"><span class="ico">📡</span>Connecting to live feed…</div></div>
-  </div>
-  <div id="map-panel">
-    <div id="map"></div>
-    <div id="radius-banner"></div>
-    <div id="map-stats">
-      <div class="stat-pill">24h total <b id="stat-24h">0</b></div>
-      <div class="stat-pill">Live now  <b id="stat-live">0</b></div>
-      <div class="stat-pill">Gang zones <b id="stat-gang">0</b></div>
-    </div>
-    <div id="heatmap-legend">
-      <div class="heat-title">P1 Violent Crime Density</div>
-      <div class="heat-bar"></div>
-      <div class="heat-labels"><span>Low</span><span>High</span></div>
-      <div class="heat-note" id="heat-note">129 incidents · April 2026 · MPD Open Data</div>
-    </div>
-    <div id="district-legend">
-      <div class="legend-title">MPD Stations</div>
-      <div id="legend-items"></div>
-    </div>
-    <div id="fugitive-legend">
-      <div class="fug-legend-title">⚠ Active Fugitives</div>
-      <div class="fug-legend-note" id="fug-legend-note">Loading from CrimeStoppers…</div>
-    </div>
-  </div>
-</div>
-
-<script>
-/* ── SUPABASE ── */
-const SB = {
-  h(){return{"apikey":CONFIG.SUPABASE_ANON_KEY,"Authorization":`Bearer ${CONFIG.SUPABASE_ANON_KEY}`,"Content-Type":"application/json"};},
-  async query(path){const r=await fetch(`${CONFIG.SUPABASE_URL}/rest/v1/${path}`,{headers:this.h()});if(!r.ok)throw new Error(`${r.status}`);return r.json();},
-  subscribe(onInsert){
-    const ws=new WebSocket(`${CONFIG.SUPABASE_URL.replace("https://","wss://").replace("http://","ws://")}/realtime/v1/websocket?apikey=${CONFIG.SUPABASE_ANON_KEY}&vsn=1.0.0`);
-    ws.onopen=()=>{ws.send(JSON.stringify({topic:"realtime:public:incidents",event:"phx_join",payload:{config:{broadcast:{self:false},presence:{key:""}}},ref:"1"}));setConn(true);};
-    ws.onmessage=e=>{try{const m=JSON.parse(e.data);const rec=m.payload?.record||m.payload?.data?.record;if(rec&&(m.event==="INSERT"||m.payload?.data?.type==="INSERT"))onInsert(rec);}catch(_){}};
-    ws.onclose=()=>{setConn(false);setTimeout(()=>SB.subscribe(onInsert),5000);};
-    ws.onerror=()=>setConn(false);
-    setInterval(()=>{if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({topic:"phoenix",event:"heartbeat",payload:{},ref:"hb"}));},25000);
-  }
-};
-
-/* ── STATE ── */
-const S={
-  incidents:[],filter:"all",selectedDistricts:new Set(),
-  selectedId:null,markers:{},districtLayers:[],heatLayer:null,fugitiveMarkers:[],
-  districtsVisible:false,heatmapVisible:false,fugitivesVisible:false,
-  radiusCircle:null,radiusCenter:null,radiusMode:false,
-  map:null,userMarker:null,heatmapPoints:[],fugitives:[],
-};
-
-const BADGE={
-  p1:     {cls:"badge-p1",     label:"Priority 1 — Immediate Response"},
-  p2:     {cls:"badge-p2",     label:"Priority 2 — Urgent"},
-  medical:{cls:"badge-medical",label:"Medical Emergency"},
-};
-const PIN_COL={p1:"#ff3d4f",p2:"#f59e0b",medical:"#3d9eff"};
-
-/* ── DISTRICT CHIPS ── */
-function buildDistrictChips(){
-  const bar=document.getElementById("district-filter-bar"),leg=document.getElementById("legend-items");
-  STATION_NAMES.forEach(name=>{
-    const info=MPD_DISTRICTS[name];
-    const chip=document.createElement("div");
-    chip.className="chip dchip";chip.dataset.d=name;chip.textContent=name;
-    chip.style.borderColor=info.color+"60";chip.style.color=info.color;
-    chip.addEventListener("click",()=>toggleDistrictFilter(name,chip,info.color));
-    bar.appendChild(chip);
-    const item=document.createElement("div");item.className="legend-item";
-    item.innerHTML=`<div class="legend-swatch" style="background:${info.color}40;border:1px solid ${info.color}"></div><span>${name}</span>`;
-    leg.appendChild(item);
-  });
-}
-function toggleDistrictFilter(name,chip,color){
-  const allChip=document.querySelector(".dchip[data-d='all']");
-  if(S.selectedDistricts.has(name)){S.selectedDistricts.delete(name);chip.classList.remove("active");chip.style.background="";chip.style.color=color;}
-  else{S.selectedDistricts.add(name);chip.classList.add("active");chip.style.background=color;chip.style.color="#06080f";allChip.classList.remove("active");}
-  if(S.selectedDistricts.size===0)allChip.classList.add("active");
-  renderFeed();
-}
-document.querySelector(".dchip[data-d='all']").addEventListener("click",function(){
-  S.selectedDistricts.clear();
-  document.querySelectorAll(".dchip[data-d]").forEach(c=>{
-    if(c.dataset.d==="all"){c.classList.add("active");}
-    else{c.classList.remove("active");c.style.background="";c.style.color=MPD_DISTRICTS[c.dataset.d]?.color||"var(--text2)";}
-  });
-  renderFeed();
-});
-
-/* ── HELPERS ── */
-function haversine(a,b,c,d){const R=3958.8,dL=(c-a)*Math.PI/180,dG=(d-b)*Math.PI/180,x=Math.sin(dL/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dG/2)**2;return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
-async function geocodeAddress(addr){const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(addr)}`,{headers:{"Accept-Language":"en","User-Agent":"HoodBrief/1.0"}});const d=await r.json();if(!d.length)throw new Error("Not found");return{lat:parseFloat(d[0].lat),lng:parseFloat(d[0].lon),label:d[0].display_name};}
-function fmtTime(iso){return new Date(iso).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false});}
-function fmtAgo(iso){const d=Math.floor((Date.now()-new Date(iso))/60000);if(d<1)return"just now";if(d<60)return`${d}m ago`;const h=Math.floor(d/60),m=d%60;return m?`${h}h ${m}m`:`${h}h`;}
-function isNew(iso){return(Date.now()-new Date(iso))<120000;}
-function isLast24h(iso){return(Date.now()-new Date(iso))<86400000;}
-function fmtDist(mi){return mi<0.1?"<0.1 mi":`${mi.toFixed(1)} mi`;}
-function getDist(inc){if(!S.radiusMode||!S.radiusCenter||!inc.lat||!inc.lng)return null;return haversine(S.radiusCenter.lat,S.radiusCenter.lng,inc.lat,inc.lng);}
-function stationMatch(inc){if(S.selectedDistricts.size===0)return true;if(!inc.station)return false;for(const d of S.selectedDistricts)if(inc.station.includes(d))return true;return false;}
-function getVisible(){
-  return S.incidents.filter(i=>{
-    if(!stationMatch(i))return false;
-    if(S.radiusMode){if(!isLast24h(i.created_at)||!i.lat||!i.lng)return false;if(haversine(S.radiusCenter.lat,S.radiusCenter.lng,i.lat,i.lng)>CONFIG.RADIUS_MILES)return false;}
-    if(S.filter==="gang")return i.gang_hotspot===true;
-    return S.filter==="all"||i.priority===S.filter;
-  });
-}
-
-/* ── MAP INIT ── */
-function initMap(){
-  S.map=L.map("map",{center:CONFIG.CITY.center,zoom:CONFIG.CITY.zoom,zoomControl:false,attributionControl:false});
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18}).addTo(S.map);
-  L.control.zoom({position:"bottomright"}).addTo(S.map);
-}
-
-/* ── HEATMAP ── */
-async function loadHeatmapPoints(){
-  try{
-    const rows=await SB.query("heatmap_points?select=lat,lng&limit=5000");
-    S.heatmapPoints=rows.map(r=>[parseFloat(r.lat),parseFloat(r.lng)]);
-    document.getElementById("heat-note").textContent=`${S.heatmapPoints.length} P1 violent crime incidents · April 2026`;
-  }catch(e){console.log("[Heatmap] Load error:",e.message);}
-}
-function toggleHeatmap(){
-  S.heatmapVisible=!S.heatmapVisible;
-  document.getElementById("heatmap-btn").classList.toggle("active",S.heatmapVisible);
-  document.getElementById("heatmap-legend").classList.toggle("visible",S.heatmapVisible);
-  if(S.heatmapVisible){
-    if(S.districtsVisible)toggleDistricts();
-    if(S.fugitivesVisible)toggleFugitives();
-    S.heatLayer=L.heatLayer(S.heatmapPoints,{radius:25,blur:20,maxZoom:14,gradient:{0.2:"#0000ff",0.4:"#00ffff",0.6:"#00ff00",0.8:"#ffff00",1.0:"#ff0000"},minOpacity:0.4}).addTo(S.map);
-  }else{if(S.heatLayer){S.heatLayer.remove();S.heatLayer=null;}}
-}
-
-/* ── DISTRICTS ── */
-function toggleDistricts(){
-  S.districtsVisible=!S.districtsVisible;
-  document.getElementById("district-btn").classList.toggle("active",S.districtsVisible);
-  document.getElementById("district-legend").classList.toggle("visible",S.districtsVisible);
-  if(S.districtsVisible){
-    if(S.heatmapVisible)toggleHeatmap();
-    if(S.fugitivesVisible)toggleFugitives();
-    Object.entries(MPD_DISTRICTS).forEach(([name,info])=>{
-      const poly=L.polygon(info.coords,{color:info.color,weight:1.5,opacity:0.8,fillColor:info.color,fillOpacity:0.08}).addTo(S.map);
-      poly.bindTooltip(name,{permanent:false,direction:"center"});
-      S.districtLayers.push(poly);
-    });
-  }else{S.districtLayers.forEach(l=>l.remove());S.districtLayers=[];}
-}
-
-/* ── FUGITIVES ── */
-async function loadFugitives(){
-  try{
-    const rows=await SB.query("fugitives?select=*&order=scraped_at.desc&limit=200");
-    S.fugitives=rows;
-    const withCoords=rows.filter(r=>r.lat&&r.lng).length;
-    const note=document.getElementById("fug-legend-note");
-    note.textContent=`${rows.length} active warrants · ${withCoords} mapped`;
-    console.log(`[Fugitives] Loaded ${rows.length} records, ${withCoords} with coordinates`);
-  }catch(e){console.log("[Fugitives] Load error:",e.message);}
-}
-
-function makeFugitiveIcon(){
-  // Teal downward-pointing triangle
-  const size=18;
-  return L.divIcon({
-    className:"",
-    html:`<svg width="${size}" height="${size}" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-      <polygon points="9,16 1,2 17,2" fill="#14b8a6" stroke="rgba(255,255,255,0.7)" stroke-width="1.5"/>
-    </svg>`,
-    iconAnchor:[size/2,size],
-    iconSize:[size,size],
-  });
-}
-
-function fugitivePopupHTML(f){
-  const hasPhoto=f.photo_url&&f.photo_url.length>0;
-  return `
-    <div>
-      ${hasPhoto?`<img class="f-photo" src="${f.photo_url}" alt="${f.name}" onerror="this.style.display='none'">`:""}
-      <div class="f-header">⚠ Active Warrant</div>
-      <div class="f-name">${f.name||"Unknown"}</div>
-      <div class="f-dob">DOB: ${f.dob||"Unknown"}</div>
-      <div class="f-charges">${f.charges||"Charges unknown"}</div>
-      <div class="f-addr">📍 Last known: ${f.address||"Unknown"}</div>
-      <div class="f-warrant">Warrant #${f.warrant_num||"N/A"}</div>
-    </div>
-  `;
-}
-
-function toggleFugitives(){
-  S.fugitivesVisible=!S.fugitivesVisible;
-  document.getElementById("fugitive-btn").classList.toggle("active",S.fugitivesVisible);
-  document.getElementById("fugitive-legend").classList.toggle("visible",S.fugitivesVisible);
-  if(S.fugitivesVisible){
-    if(S.heatmapVisible)toggleHeatmap();
-    if(S.districtsVisible)toggleDistricts();
-    // Place fugitive markers
-    S.fugitives.forEach(f=>{
-      if(!f.lat||!f.lng)return;
-      const m=L.marker([parseFloat(f.lat),parseFloat(f.lng)],{
-        icon:makeFugitiveIcon(),
-        zIndexOffset:500,
-      }).addTo(S.map).bindPopup(fugitivePopupHTML(f),{maxWidth:280});
-      S.fugitiveMarkers.push(m);
-    });
-    console.log(`[Fugitives] Placed ${S.fugitiveMarkers.length} markers on map`);
-  }else{
-    S.fugitiveMarkers.forEach(m=>m.remove());
-    S.fugitiveMarkers=[];
-  }
-}
-
-/* ── INCIDENT MARKERS ── */
-function makeIcon(priority,selected,inRadius,isGang){
-  const col=isGang?"#ff6b1a":(PIN_COL[priority]||"#6b7d96"),sz=selected?20:inRadius?16:12;
-  const glow=selected?`box-shadow:0 0 14px ${col}90;`:isGang?`box-shadow:0 0 10px ${col}70;`:inRadius?`box-shadow:0 0 8px ${col}60;`:"";
-  const bdr=isGang?`border:2px solid #ff6b1a;`:inRadius?`border:2px solid var(--gold);`:`border:2px solid rgba(255,255,255,0.55);`;
-  return L.divIcon({className:"",html:`<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${col};${bdr}${glow}transition:all 0.2s;"></div>`,iconAnchor:[sz/2,sz/2],iconSize:[sz,sz]});
-}
-function makeUserIcon(){return L.divIcon({className:"",html:`<div style="width:20px;height:20px;border-radius:50%;background:#f5c842;border:3px solid #fff;box-shadow:0 0 16px rgba(245,200,66,0.8);"></div>`,iconAnchor:[10,10],iconSize:[20,20]});}
-
-function popupHTML(inc){
-  const b=BADGE[inc.priority]||BADGE.p2,dist=getDist(inc),stColor=getStationColor(inc.station);
-  return `
-    <div class="p-badge ${b.cls}">${b.label}</div>    <div class="p-title">${inc.title||"Unknown incident"}</div>
-    <div class="p-row">📍 <b>${inc.location||"Location unknown"}</b></div>
-    <div class="p-row">🕐 <b>${fmtTime(inc.created_at)} — ${fmtAgo(inc.created_at)}</b></div>
-    <div class="p-row">🚔 <b>${inc.unit||"—"}</b></div>
-    ${inc.station?`<div class="p-station" style="color:${stColor||'var(--gold)'};background:${stColor||'#f5c842'}18;border:1px solid ${stColor||'var(--gold-bdr)'}40">🏢 ${inc.station}</div>`:""}
-    ${inc.gang_hotspot?`<div class="p-gang">⚠ ${inc.gang_zone}</div>`:""}
-    ${dist!==null?`<div class="p-dist">📏 ${fmtDist(dist)} from search location</div>`:""}
-    ${inc.transcript?`<div class="p-tx">"${inc.transcript.slice(0,140)}${inc.transcript.length>140?"…":""}"</div>`:""}
-  `;
-}
-
-function syncMarkers(){
-  const visible=getVisible(),visibleIds=new Set(visible.map(i=>i.id));
-  Object.keys(S.markers).forEach(id=>{if(!visibleIds.has(id)){S.markers[id].remove();delete S.markers[id];}});
-  visible.forEach(inc=>{
-    if(!inc.lat||!inc.lng)return;
-    const selected=inc.id===S.selectedId,isGang=inc.gang_hotspot===true;
-    const icon=makeIcon(inc.priority,selected,S.radiusMode,isGang);
-    if(S.markers[inc.id]){S.markers[inc.id].setIcon(icon);S.markers[inc.id].setPopupContent(popupHTML(inc));return;}
-    const m=L.marker([inc.lat,inc.lng],{icon}).addTo(S.map).bindPopup(popupHTML(inc),{maxWidth:270}).on("click",()=>selectIncident(inc.id));
-    S.markers[inc.id]=m;
-  });
-}
-
-/* ── RENDER FEED ── */
-function renderFeed(){
-  const list=getVisible(),scroll=document.getElementById("feed-scroll");
-  if(S.radiusMode&&S.radiusCenter)list.sort((a,b)=>haversine(S.radiusCenter.lat,S.radiusCenter.lng,a.lat||0,a.lng||0)-haversine(S.radiusCenter.lat,S.radiusCenter.lng,b.lat||0,b.lng||0));
-  document.getElementById("stat-24h").textContent=S.incidents.filter(i=>isLast24h(i.created_at)).length;
-  document.getElementById("stat-live").textContent=S.incidents.filter(i=>(Date.now()-new Date(i.created_at))<3600000).length;
-  document.getElementById("stat-gang").textContent=S.incidents.filter(i=>i.gang_hotspot===true).length;
-  const distLabel=S.selectedDistricts.size>0?` · ${S.selectedDistricts.size} district${S.selectedDistricts.size>1?"s":""}`:""
-  document.getElementById("feed-count").textContent=S.radiusMode?`${list.length} within ${CONFIG.RADIUS_MILES} mi`:`${list.length} incident${list.length!==1?"s":""}${distLabel}`;
-  const banner=document.getElementById("radius-banner");
-  if(S.radiusMode){banner.textContent=`${list.length} incidents within ${CONFIG.RADIUS_MILES} miles — last 24 hours`;banner.classList.add("visible");}
-  else banner.classList.remove("visible");
-  if(list.length===0){scroll.innerHTML=`<div class="state-msg"><span class="ico">📭</span>No incidents match<br>current filters</div>`;syncMarkers();return;}
-  scroll.innerHTML=list.map(inc=>{
-    const b=BADGE[inc.priority]||BADGE.p2;
-    const sel=inc.id===S.selectedId?" selected":"",inR=S.radiusMode?" in-radius":"";
-    const gangCls=inc.gang_hotspot?" is-gang":"";
-    const dist=getDist(inc),stColor=getStationColor(inc.station);
-    const stShort=inc.station?inc.station.replace(" Station",""):"";
-    return `<div class="incident${sel}${inR}${gangCls}" data-id="${inc.id}">
-      <div class="inc-row1">
-        <span class="badge ${b.cls}">${b.label}</span>        ${inc.station?`<span class="station-tag" style="color:${stColor||'var(--gold)'};background:${stColor||'#f5c842'}18;border:1px solid ${stColor||'var(--gold-bdr)'}50">🏢 ${stShort}</span>`:""}
-        ${inc.gang_hotspot?`<span class="gang-tag">⚠ Gang</span>`:""}
-        ${S.radiusMode&&dist!==null?`<span class="radius-tag">📏 ${fmtDist(dist)}</span>`:""}
-        ${isNew(inc.created_at)?`<span class="new-tag">NEW</span>`:""}
-        <span class="inc-time">${fmtTime(inc.created_at)}</span>
-      </div>
-      <div class="inc-title">${inc.title||"Unknown incident"}</div>
-      <div class="inc-loc"><svg width="9" height="11" viewBox="0 0 9 11" fill="none"><path d="M4.5 0C2.01 0 0 2.01 0 4.5C0 7.875 4.5 11 4.5 11C4.5 11 9 7.875 9 4.5C9 2.01 6.99 0 4.5 0Z" fill="currentColor" opacity="0.5"/></svg>${inc.location||"Location unknown"}</div>
-      <div class="inc-units">${inc.unit||""}</div>
-      ${inc.gang_hotspot&&inc.gang_zone?`<div class="inc-gang-zone">⚠ ${inc.gang_zone}</div>`:""}
-    </div>`;
-  }).join("");
-  scroll.querySelectorAll(".incident").forEach(el=>el.addEventListener("click",()=>selectIncident(el.dataset.id)));
-  syncMarkers();
-}
-
-/* ── SELECT INCIDENT ── */
-function selectIncident(id){
-  S.selectedId=id;const inc=S.incidents.find(i=>i.id===id);
-  Object.entries(S.markers).forEach(([mid,m])=>{const i=S.incidents.find(x=>x.id===mid);if(i)m.setIcon(makeIcon(i.priority,mid===id,S.radiusMode,i.gang_hotspot===true));});
-  if(inc&&inc.lat&&inc.lng){S.map.flyTo([parseFloat(inc.lat),parseFloat(inc.lng)],15,{duration:0.75});setTimeout(()=>S.markers[id]?.openPopup(),800);}
-  renderFeed();
-  document.querySelector(`.incident[data-id="${id}"]`)?.scrollIntoView({behavior:"smooth",block:"nearest"});
-}
-
-/* ── RADIUS SEARCH ── */
-async function doRadiusSearch(){
-  const addr=document.getElementById("addr-input").value.trim();if(!addr)return;
-  const btn=document.getElementById("search-btn"),errEl=document.getElementById("geo-error"),statEl=document.getElementById("radius-status");
-  btn.disabled=true;btn.textContent="Searching…";errEl.classList.remove("visible");statEl.classList.remove("visible");
-  try{
-    const geo=await geocodeAddress(addr);S.radiusCenter=geo;S.radiusMode=true;
-    if(S.radiusCircle)S.radiusCircle.remove();
-    S.radiusCircle=L.circle([geo.lat,geo.lng],{radius:CONFIG.RADIUS_MILES*1609.34,color:"#f5c842",weight:1.5,opacity:0.7,fillColor:"#f5c842",fillOpacity:0.06}).addTo(S.map);
-    if(S.userMarker)S.userMarker.remove();
-    S.userMarker=L.marker([geo.lat,geo.lng],{icon:makeUserIcon(),zIndexOffset:1000}).addTo(S.map).bindPopup(`<div class="p-title">Search location</div><div class="p-row">${geo.label.split(",").slice(0,3).join(", ")}</div>`).openPopup();
-    S.map.fitBounds(S.radiusCircle.getBounds(),{padding:[20,20]});
-    document.getElementById("clear-btn").classList.add("visible");
-    const count=getVisible().length;
-    statEl.textContent=`${count} incident${count!==1?"s":""} within ${CONFIG.RADIUS_MILES} miles of "${addr}" — last 24 hours`;
-    statEl.classList.add("visible");renderFeed();
-  }catch(err){errEl.classList.add("visible");}
-  finally{btn.disabled=false;btn.textContent="Search";}
-}
-function clearRadiusSearch(){
-  S.radiusMode=false;S.radiusCenter=null;
-  if(S.radiusCircle){S.radiusCircle.remove();S.radiusCircle=null;}
-  if(S.userMarker){S.userMarker.remove();S.userMarker=null;}
-  document.getElementById("addr-input").value="";
-  document.getElementById("clear-btn").classList.remove("visible");
-  document.getElementById("radius-status").classList.remove("visible");
-  document.getElementById("geo-error").classList.remove("visible");
-  S.map.flyTo(CONFIG.CITY.center,CONFIG.CITY.zoom,{duration:0.8});
-  Object.values(S.markers).forEach(m=>m.remove());S.markers={};renderFeed();
-}
-
-/* ── TOAST ── */
-function showToast(inc){
-  const wrap=document.getElementById("toast-wrap"),el=document.createElement("div");
-  const stColor=getStationColor(inc.station);
-  el.className=inc.gang_hotspot?"toast gang-toast":"toast";
-  el.innerHTML=`<div class="t-dot" style="background:${inc.gang_hotspot?"var(--gang)":"var(--memphis)"}"></div>
-    <div style="flex:1">
-      <div class="t-city" style="color:var(--memphis)">Memphis, TN</div>
-      <div class="t-title">${inc.title||"New incident"}</div>
-      ${inc.location?`<div class="t-loc">${inc.location}</div>`:""}
-      ${inc.station?`<div class="t-loc" style="color:${stColor||'var(--gold)'}">🏢 ${inc.station}</div>`:""}      ${inc.gang_hotspot?`<div class="t-gang">⚠ ${inc.gang_zone}</div>`:""}
-    </div>`;
-  el.addEventListener("click",()=>{selectIncident(inc.id);dismiss(el);});
-  wrap.prepend(el);while(wrap.children.length>4)wrap.lastChild.remove();
-  setTimeout(()=>dismiss(el),inc.gang_hotspot?10000:7000);
-}
-function dismiss(el){el.classList.add("out");setTimeout(()=>el.remove(),280);}
-
-/* ── CONNECTION / CLOCK ── */
-function setConn(ok){const d=document.getElementById("conn-dot");d.className=ok?"ok":"err";}
-function tickClock(){document.getElementById("clock").textContent=new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});}
-setInterval(tickClock,1000);tickClock();
-
-/* ── EVENTS ── */
-document.getElementById("filter-bar").addEventListener("click",e=>{
-  const chip=e.target.closest(".chip");if(!chip)return;
-  S.filter=chip.dataset.f;
-  document.querySelectorAll("#filter-bar .chip").forEach(c=>c.classList.toggle("active",c===chip));
-  renderFeed();
-});
-document.getElementById("search-btn").addEventListener("click",doRadiusSearch);
-document.getElementById("clear-btn").addEventListener("click",clearRadiusSearch);
-document.getElementById("addr-input").addEventListener("keydown",e=>{if(e.key==="Enter")doRadiusSearch();});
-
-/* ── POLLING ── */
-async function pollForUpdates(){
-  if(CONFIG.SUPABASE_URL.includes("YOUR_"))return;
-  try{
-    const latest=S.incidents.length>0?S.incidents[0].created_at:new Date(Date.now()-3600000).toISOString();
-    const rows=await SB.query(`incidents?select=*&order=created_at.desc&limit=50&created_at=gt.${encodeURIComponent(latest)}`);
-    if(rows&&rows.length>0){
-      let added=0;
-      rows.forEach(r=>{
-        if(!S.incidents.find(i=>i.id===r.id)){
-          r.lat=r.lat?parseFloat(r.lat):null;r.lng=r.lng?parseFloat(r.lng):null;
-          if(!r.station&&r.lat&&r.lng)r.station=detectStation(r.lat,r.lng);
-          S.incidents.unshift(r);showToast(r);added++;
-        }
-      });
-      if(added>0){if(S.incidents.length>600)S.incidents=S.incidents.slice(0,600);renderFeed();}
+def sb_headers():
+    return {
+        "apikey":        SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type":  "application/json",
+        "Prefer":        "return=minimal",
     }
-  }catch(err){console.log("[Poll]",err.message);}
+
+def sb_get(path, params=None):
+    r = requests.get(
+        f"{SUPABASE_URL}/rest/v1/{path}",
+        params=params,
+        headers={
+            "apikey":        SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+        },
+        timeout=10,
+    )
+    r.raise_for_status()
+    return r.json()
+
+def sb_post(path, data):
+    r = requests.post(
+        f"{SUPABASE_URL}/rest/v1/{path}",
+        json=data,
+        headers=sb_headers(),
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r
+
+def sb_delete(path):
+    r = requests.delete(
+        f"{SUPABASE_URL}/rest/v1/{path}",
+        headers=sb_headers(),
+        timeout=15,
+    )
+    r.raise_for_status()
+    return r
+
+
+# ══════════════════════════════════════════════════════════════════
+#  HEATMAP — STATIC P1 POINTS
+#  Source: MPD Public Safety Incidents GeoJSON (April 2026)
+#  Loaded once at startup into Supabase heatmap_points table
+#  (Live API at data.memphistn.gov is not accessible from Railway)
+# ══════════════════════════════════════════════════════════════════
+
+HEATMAP_STATIC_POINTS = [
+    {"lat":35.11,"lng":-90.065,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.134,"lng":-90.035,"category":"ROBBERY"},
+    {"lat":35.043,"lng":-89.861,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.245,"lng":-89.983,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.161,"lng":-89.954,"category":"ROBBERY"},
+    {"lat":35.028,"lng":-90.044,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.114,"lng":-90.028,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.094,"lng":-90.07,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.094,"lng":-90.07,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.175,"lng":-90.025,"category":"ROBBERY"},
+    {"lat":35.149,"lng":-89.916,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.138,"lng":-89.964,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.055,"lng":-90.021,"category":"ROBBERY"},
+    {"lat":35.106,"lng":-90.003,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.106,"lng":-90.003,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.145,"lng":-90.032,"category":"ROBBERY"},
+    {"lat":35.247,"lng":-89.977,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.107,"lng":-90.001,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.175,"lng":-89.926,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.155,"lng":-89.912,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.05,"lng":-90.005,"category":"ROBBERY"},
+    {"lat":35.109,"lng":-89.952,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.161,"lng":-89.796,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.134,"lng":-90.029,"category":"ROBBERY"},
+    {"lat":35.06,"lng":-90.079,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.145,"lng":-89.796,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.173,"lng":-89.784,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.133,"lng":-89.977,"category":"ROBBERY"},
+    {"lat":35.113,"lng":-90.026,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.06,"lng":-90.079,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.171,"lng":-89.946,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.239,"lng":-89.942,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.046,"lng":-90.081,"category":"ROBBERY"},
+    {"lat":35.024,"lng":-90.01,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.006,"lng":-90.006,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.139,"lng":-90.061,"category":"ROBBERY"},
+    {"lat":35.167,"lng":-90.027,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.211,"lng":-90.026,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.207,"lng":-89.995,"category":"ROBBERY"},
+    {"lat":35.231,"lng":-89.896,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.221,"lng":-89.974,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.167,"lng":-89.921,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.024,"lng":-90.01,"category":"ROBBERY"},
+    {"lat":35.064,"lng":-90.058,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.115,"lng":-89.97,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.234,"lng":-89.968,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.252,"lng":-89.936,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.074,"lng":-89.926,"category":"ROBBERY"},
+    {"lat":35.035,"lng":-90.004,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.109,"lng":-89.982,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.134,"lng":-90.029,"category":"ROBBERY"},
+    {"lat":35.22,"lng":-89.965,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.22,"lng":-89.946,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.12,"lng":-90.034,"category":"ROBBERY"},
+    {"lat":35.212,"lng":-90.026,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.143,"lng":-90.014,"category":"ROBBERY"},
+    {"lat":35.117,"lng":-90.05,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.096,"lng":-89.996,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.093,"lng":-90.067,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.108,"lng":-89.973,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.093,"lng":-90.038,"category":"ROBBERY"},
+    {"lat":35.094,"lng":-90.03,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.14,"lng":-90.054,"category":"ROBBERY"},
+    {"lat":35.059,"lng":-89.863,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.049,"lng":-89.827,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.093,"lng":-90.038,"category":"ROBBERY"},
+    {"lat":35.156,"lng":-89.783,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.173,"lng":-89.961,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.108,"lng":-89.973,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.17,"lng":-89.936,"category":"ROBBERY"},
+    {"lat":35.045,"lng":-89.874,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.104,"lng":-90.011,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.172,"lng":-89.792,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.093,"lng":-90.067,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.16,"lng":-90.016,"category":"ROBBERY"},
+    {"lat":35.117,"lng":-90.05,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.22,"lng":-89.926,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.187,"lng":-89.877,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.05,"lng":-89.798,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.094,"lng":-90.03,"category":"ROBBERY"},
+    {"lat":35.22,"lng":-89.926,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.243,"lng":-89.948,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.157,"lng":-90.033,"category":"ROBBERY"},
+    {"lat":35.204,"lng":-89.978,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.177,"lng":-89.942,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.06,"lng":-89.926,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.061,"lng":-89.848,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.111,"lng":-89.967,"category":"ROBBERY"},
+    {"lat":35.227,"lng":-90.003,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.06,"lng":-89.856,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.051,"lng":-90.013,"category":"ROBBERY"},
+    {"lat":35.088,"lng":-90.066,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.214,"lng":-89.96,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.072,"lng":-89.868,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.082,"lng":-89.889,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.096,"lng":-89.975,"category":"ROBBERY"},
+    {"lat":35.188,"lng":-89.798,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.069,"lng":-89.934,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.181,"lng":-89.934,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.115,"lng":-90.021,"category":"ROBBERY"},
+    {"lat":35.072,"lng":-89.868,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.007,"lng":-90.072,"category":"ROBBERY"},
+    {"lat":35.027,"lng":-89.871,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.069,"lng":-89.934,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.065,"lng":-89.905,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.101,"lng":-90.036,"category":"ROBBERY"},
+    {"lat":35.213,"lng":-89.922,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.113,"lng":-89.947,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.057,"lng":-89.93,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.021,"lng":-90.043,"category":"ROBBERY"},
+    {"lat":35.046,"lng":-90.082,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.069,"lng":-89.954,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.065,"lng":-89.905,"category":"ROBBERY"},
+    {"lat":35.059,"lng":-89.863,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.213,"lng":-89.922,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.204,"lng":-89.978,"category":"ROBBERY"},
+    {"lat":35.007,"lng":-90.072,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.069,"lng":-89.954,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.06,"lng":-89.926,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.059,"lng":-89.863,"category":"ROBBERY"},
+    {"lat":35.06,"lng":-89.856,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.172,"lng":-89.792,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.046,"lng":-90.082,"category":"ROBBERY"},
+    {"lat":35.102,"lng":-90.035,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.044,"lng":-89.885,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.243,"lng":-89.948,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.082,"lng":-89.889,"category":"ROBBERY"},
+    {"lat":35.096,"lng":-89.975,"category":"AGGRAVATED ASSAULT"},
+    {"lat":35.113,"lng":-89.947,"category":"WEAPON LAW VIOLATION"},
+    {"lat":35.035,"lng":-90.004,"category":"HOMICIDE"},
+    {"lat":35.157,"lng":-90.033,"category":"HOMICIDE"},
+    {"lat":35.187,"lng":-89.877,"category":"KIDNAPPING/ABDUCTION"},
+    {"lat":35.082,"lng":-89.889,"category":"KIDNAPPING/ABDUCTION"},
+]
+
+def load_heatmap():
+    """Load static P1 heatmap points into Supabase on startup — only if empty."""
+    print("[Heatmap] Checking heatmap_points table...")
+    try:
+        existing = sb_get("heatmap_points", params={"select": "id", "limit": 1})
+        if existing and len(existing) > 0:
+            print(f"[Heatmap] Table already populated — skipping reload")
+            return
+        # Insert all points
+        inserted = 0
+        for i in range(0, len(HEATMAP_STATIC_POINTS), 500):
+            batch = HEATMAP_STATIC_POINTS[i:i+500]
+            sb_post("heatmap_points", batch)
+            inserted += len(batch)
+        print(f"[Heatmap] ✅ Loaded {inserted} P1 points into Supabase")
+    except Exception as e:
+        print(f"[Heatmap] Error: {e}")
+
+
+# ══════════════════════════════════════════════════════════════════
+#  FUGITIVE SCRAPER
+#  Scrapes memphismostwanted.org weekly
+#  Geocodes last known addresses and saves to Supabase fugitives table
+# ══════════════════════════════════════════════════════════════════
+
+CRIMESTOPPERS_URL = "https://www.memphismostwanted.org/"
+
+def geocode_fugitive_address(address_text):
+    """
+    Geocode a fugitive's last known address.
+    Tries 911 DB first, then Google, then Nominatim.
+    Returns (lat, lng) or None if not found or outside region.
+    """
+    if not address_text or "unknown" in address_text.lower() or "at large" in address_text.lower():
+        return None
+
+    # Normalize — extract just the street address part before city/state
+    # e.g. "1234 Main St in Memphis, TN 38103" -> "1234 Main St"
+    clean = re.sub(r'\s+in\s+.+$', '', address_text, flags=re.IGNORECASE).strip()
+    clean_upper = clean.upper()
+
+    def in_region(lat, lng):
+        # Accept Memphis and surrounding Shelby County area
+        return 34.9 <= lat <= 35.4 and -90.3 <= lng <= -89.6
+
+    # Step 1: 911 database
+    try:
+        rows = sb_get(
+            "memphis_addresses",
+            params={"address": f"eq.{clean_upper}", "select": "lat,lng", "limit": 1}
+        )
+        if rows:
+            lat, lng = float(rows[0]['lat']), float(rows[0]['lng'])
+            if in_region(lat, lng):
+                print(f"  [Fugitive] 911 DB: {clean_upper} -> {lat}, {lng}")
+                return lat, lng
+    except Exception as e:
+        print(f"  [Fugitive] 911 DB error: {e}")
+
+    # Step 2: Google Geocoding
+    google_key = os.environ.get("GOOGLE_MAPS_KEY", "")
+    if google_key:
+        try:
+            r = requests.get(
+                "https://maps.googleapis.com/maps/api/geocode/json",
+                params={"address": f"{clean}, Memphis, TN", "key": google_key},
+                timeout=10,
+            )
+            data = r.json()
+            if data.get("status") == "OK":
+                loc = data["results"][0]["geometry"]["location"]
+                lat, lng = float(loc["lat"]), float(loc["lng"])
+                if in_region(lat, lng):
+                    print(f"  [Fugitive] Google: {clean} -> {lat}, {lng}")
+                    return lat, lng
+        except Exception as e:
+            print(f"  [Fugitive] Google error: {e}")
+
+    # Step 3: Nominatim
+    try:
+        time.sleep(1)
+        r = requests.get(
+            "https://nominatim.openstreetmap.org/search",
+            params={"q": f"{clean}, Memphis, TN", "format": "json", "limit": 1},
+            headers={"User-Agent": "HoodBrief/1.0 (hoodbrief@proton.me)"},
+            timeout=10,
+        )
+        results = r.json()
+        if results:
+            lat, lng = float(results[0]["lat"]), float(results[0]["lon"])
+            if in_region(lat, lng):
+                print(f"  [Fugitive] Nominatim: {clean} -> {lat}, {lng}")
+                return lat, lng
+    except Exception as e:
+        print(f"  [Fugitive] Nominatim error: {e}")
+
+    print(f"  [Fugitive] Could not geocode: {address_text}")
+    return None
+
+
+def parse_fugitive_post(post_html):
+    """
+    Parse a single CrimeStoppers weekly post and extract fugitive records.
+    Returns list of dicts with name, dob, charges, address, photo_url, warrant_num.
+    """
+    fugitives = []
+    soup = BeautifulSoup(post_html, "html.parser")
+
+    # Each fugitive is separated by <hr> tags
+    # Structure: img -> bold name, DOB line, Wanted for line, Last Known Address line, Warrant line
+    content = soup.find("div", class_="entry-content") or soup
+
+    # Split on <hr> tags to get individual fugitive blocks
+    blocks = []
+    current = []
+    for elem in content.children:
+        tag = getattr(elem, 'name', None)
+        if tag == 'hr':
+            if current:
+                blocks.append(current)
+                current = []
+        else:
+            current.append(elem)
+    if current:
+        blocks.append(current)
+
+    for block in blocks:
+        try:
+            block_soup = BeautifulSoup(
+                "".join(str(e) for e in block), "html.parser"
+            )
+            text = block_soup.get_text(" ", strip=True)
+
+            # Extract photo URL
+            img = block_soup.find("img")
+            photo_url = img.get("src", "") if img else ""
+
+            # Extract name — first bold text
+            bold = block_soup.find("strong")
+            name = bold.get_text(strip=True) if bold else ""
+            if not name:
+                continue
+
+            # Extract DOB
+            dob_match = re.search(r'DOB[:\s]+(\d{2}/\d{2}/\d{4})', text)
+            dob = dob_match.group(1) if dob_match else ""
+
+            # Extract charges — "Wanted for X" section
+            charges_match = re.search(
+                r'Wanted for\s+(.+?)(?:Last Known Address|Warrant)', text,
+                re.IGNORECASE | re.DOTALL
+            )
+            charges = charges_match.group(1).strip().rstrip(',') if charges_match else ""
+
+            # Extract last known address
+            addr_match = re.search(
+                r'Last Known Address[:\s]+(.+?)(?:Warrant|$)', text,
+                re.IGNORECASE | re.DOTALL
+            )
+            address = addr_match.group(1).strip() if addr_match else ""
+
+            # Extract warrant number
+            warrant_match = re.search(r'Warrant\s*#?\s*(\d+)', text, re.IGNORECASE)
+            warrant_num = warrant_match.group(1) if warrant_match else ""
+
+            if name and (charges or warrant_num):
+                fugitives.append({
+                    "name":        name,
+                    "dob":         dob,
+                    "charges":     charges,
+                    "address":     address,
+                    "photo_url":   photo_url,
+                    "warrant_num": warrant_num,
+                })
+        except Exception as e:
+            print(f"  [Fugitive] Parse error on block: {e}")
+            continue
+
+    return fugitives
+
+
+def scrape_fugitives():
+    """
+    Scrape CrimeStoppers Most Wanted, geocode addresses,
+    and update the Supabase fugitives table.
+    """
+    print("[Fugitives] Starting weekly scrape from memphismostwanted.org...")
+    try:
+        r = requests.get(
+            CRIMESTOPPERS_URL,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; HoodBrief/1.0)"},
+            timeout=20,
+        )
+        r.raise_for_status()
+        soup = BeautifulSoup(r.text, "html.parser")
+
+        # Find all weekly posts
+        posts = soup.find_all("article") or soup.find_all("div", class_="post")
+        if not posts:
+            # Fallback: parse whole page
+            posts = [soup]
+
+        all_fugitives = []
+        for post in posts[:4]:  # Only last 4 weeks
+            post_html = str(post)
+            found = parse_fugitive_post(post_html)
+            all_fugitives.extend(found)
+            print(f"  [Fugitive] Found {len(found)} fugitives in post")
+
+        print(f"[Fugitives] Total parsed: {len(all_fugitives)}")
+
+        if not all_fugitives:
+            print("[Fugitives] No fugitives parsed — skipping update")
+            return
+
+        # Geocode each fugitive address
+        records = []
+        for f in all_fugitives:
+            coords = geocode_fugitive_address(f["address"])
+            lat = coords[0] if coords else None
+            lng = coords[1] if coords else None
+            records.append({
+                "name":        f["name"],
+                "dob":         f["dob"],
+                "charges":     f["charges"],
+                "address":     f["address"],
+                "lat":         lat,
+                "lng":         lng,
+                "photo_url":   f["photo_url"],
+                "warrant_num": f["warrant_num"],
+                "scraped_at":  datetime.now(timezone.utc).isoformat(),
+            })
+
+        geocoded = sum(1 for r in records if r["lat"] is not None)
+        print(f"[Fugitives] Geocoded {geocoded}/{len(records)} addresses")
+
+        # Clear old records and insert fresh batch
+        sb_delete(
+            "fugitives?id=neq.00000000-0000-0000-0000-000000000000"
+        )
+
+        # Insert in batches
+        for i in range(0, len(records), 100):
+            batch = records[i:i+100]
+            sb_post("fugitives", batch)
+
+        ts = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+        print(f"[Fugitives] ✅ Saved {len(records)} fugitives — updated {ts}")
+
+    except requests.exceptions.ConnectionError as e:
+        print(f"[Fugitives] Connection error: {e}")
+    except Exception as e:
+        print(f"[Fugitives] Error: {e}")
+
+
+def fugitive_scrape_loop():
+    """Scrape fugitives at startup then every 7 days."""
+    while True:
+        scrape_fugitives()
+        time.sleep(FUGITIVE_REFRESH_SECONDS)
+
+
+# ══════════════════════════════════════════════════════════════════
+#  CAD STREET NAME CORRECTIONS
+#  Source: Shelby County 911 NG911 GeoDatabase — ROAD layer
+# ══════════════════════════════════════════════════════════════════
+
+CAD_CORRECTIONS = {
+    "240":             "Interstate 240",
+    "40":              "Interstate 40",
+    "55":              "Interstate 55",
+    "385":             "State Route 385",
+    "64":              "US Highway 64",
+    "51":              "US Highway 51",
+    "mlk jr":          "Doctor Martin Luther King Junior",
+    "mlk":             "Doctor Martin Luther King Junior",
+    "old highway 78":  "Old US Highway 78",
+    "horn lake":       "Old Horn Lake",
+    "hernando":        "Rufus Thomas",
+    "maryland ave":    "Charles E Blake Sr",
+    "le conte":        "Leconte",
+    "holsten":         "Holston",
+    "new castle":      "Newcastle",
+    "south center":    "Center",
+    "green creek":     "Green",
+    "glenn rogers sr": "Glenn Rogers Senior",
+    "channel 3":       "Channel Three",
 }
 
-/* ── BOOT ── */
-async function boot(){
-  initMap();
-  buildDistrictChips();
-  const unconfigured=CONFIG.SUPABASE_URL.includes("YOUR_")||CONFIG.SUPABASE_ANON_KEY.includes("YOUR_");
-  if(unconfigured){document.getElementById("boot-msg").innerHTML=`<span style="color:var(--red)">Add your Supabase URL and anon key to the CONFIG block</span>`;document.querySelector(".spinner").style.display="none";return;}
-  document.getElementById("boot-msg").textContent="Loading incidents…";
-  try{
-    const [rows] = await Promise.all([
-      SB.query(`incidents?select=*&order=created_at.desc&limit=${CONFIG.INITIAL_LOAD}`),
-      loadHeatmapPoints(),
-    ]);
-    S.incidents=rows.map(i=>{
-      const lat=i.lat?parseFloat(i.lat):null,lng=i.lng?parseFloat(i.lng):null;
-      const station=i.station||(lat&&lng?detectStation(lat,lng):null);
-      return{...i,lat,lng,station};
-    });
-    document.getElementById("boot-overlay").classList.add("gone");
-    renderFeed();
-    loadFugitives().catch(e=>console.log("[Fugitives]",e.message));
-    SB.subscribe(newRow=>{
-      newRow.lat=newRow.lat?parseFloat(newRow.lat):null;newRow.lng=newRow.lng?parseFloat(newRow.lng):null;
-      if(!newRow.station&&newRow.lat&&newRow.lng)newRow.station=detectStation(newRow.lat,newRow.lng);
-      if(!S.incidents.find(i=>i.id===newRow.id)){
-        S.incidents.unshift(newRow);if(S.incidents.length>600)S.incidents=S.incidents.slice(0,600);
-        showToast(newRow);renderFeed();
-      }
-    });
-  }catch(err){document.getElementById("boot-msg").innerHTML=`<span style="color:var(--red)">Connection failed: ${err.message}</span>`;document.querySelector(".spinner").style.display="none";}
+def apply_cad_corrections(location_text):
+    if not location_text:
+        return location_text
+    result = location_text
+    for cad, official in CAD_CORRECTIONS.items():
+        pattern = rf'\b{re.escape(cad)}\b'
+        result = re.sub(pattern, official, result, flags=re.IGNORECASE)
+    return result
+# ══════════════════════════════════════════════════════════════════
+#  INCIDENT KEYWORD PRE-FILTER
+#  Screens transcripts before sending to GPT to reduce API costs
+#  Only transcripts containing at least one keyword reach GPT
+# ══════════════════════════════════════════════════════════════════
+
+INCIDENT_KEYWORDS = [
+    # Violent crimes
+    "shooting", "shot", "shots fired", "gun", "armed", "weapon",
+    "robbery", "robber", "rob", "assault", "assaulting", "fight",
+    "stabbing", "stab", "knife", "homicide", "murder", "body",
+    "kidnap", "hostage", "rape", "sexual",
+    # Officer safety
+    "officer needs help", "need assistance", "need backup", "backup",
+    "pursuit", "chase", "fleeing", "foot chase", "vehicle pursuit",
+    "person with a gun", "person with a weapon", "suspect",
+    # Dispatch language
+    "respond", "responding", "en route", "on scene", "units",
+    "dispatch", "dispatching", "priority", "code",
+    # Medical
+    "medical", "ambulance", "ems", "unconscious", "unresponsive",
+    "overdose", "cardiac", "breathing", "not breathing", "injured",
+    # Property crimes worth logging
+    "burglary", "breaking", "domestic", "disturbance",
+    "accident", "collision", "crash", "vehicle",
+    # Translated 10-codes that indicate incidents
+    "use caution", "crime in progress", "person with a gun",
+    "shooting", "stabbing", "pursuit in progress",
+    "officer needs help", "need assistance", "ambulance request",
+    "bomb threat", "shots", "alarm",
+]
+
+def has_incident_keywords(text):
+    """
+    Returns True if the transcript contains at least one incident keyword.
+    Case-insensitive. Prevents sending routine radio chatter to GPT.
+    """
+    text_lower = text.lower()
+    return any(kw in text_lower for kw in INCIDENT_KEYWORDS)
+
+
+
+
+# ══════════════════════════════════════════════════════════════════
+#  MPD STATION DETECTION
+# ══════════════════════════════════════════════════════════════════
+
+STATION_BOUNDS = {
+    "Austin Peay Station":   (35.188, 35.264, -90.060, -89.877),
+    "Raines Station":        (34.994, 35.085, -90.185, -89.986),
+    "Mt. Moriah Station":    (35.050, 35.108, -89.990, -89.830),
+    "Crump Station":         (35.074, 35.193, -90.185, -89.957),
+    "Tillman Station":       (35.106, 35.193, -89.988, -89.888),
+    "North Main Station":    (35.124, 35.194, -90.086, -90.024),
+    "Airways Station":       (35.073, 35.116, -90.099, -89.946),
+    "Appling Farms Station": (35.117, 35.206, -89.888, -89.720),
+    "Ridgeway Station":      (34.994, 35.083, -89.990, -89.781),
 }
 
-setInterval(pollForUpdates,30000);
-setTimeout(pollForUpdates,5000);
-boot();
-</script>
-</body>
-</html>
+def detect_station(lat, lng):
+    if not lat or not lng:
+        return None
+    for station, (min_lat, max_lat, min_lng, max_lng) in STATION_BOUNDS.items():
+        if min_lat <= lat <= max_lat and min_lng <= lng <= max_lng:
+            return station
+    return None
+
+
+# ══════════════════════════════════════════════════════════════════
+#  DISPATCHER DETECTION
+# ══════════════════════════════════════════════════════════════════
+
+def is_dispatcher_call(unit_text, transcript=""):
+    search_text = f"{unit_text or ''} {transcript or ''}".lower()
+    patterns = [
+        r'\bwp[-\s]?\d+\b',
+        r'\bwp\b',
+        r'\bwhiskey\s+papa\b',
+        r'\bdispatch\b',
+    ]
+    for pattern in patterns:
+        if re.search(pattern, search_text, re.IGNORECASE):
+            return True
+    return False
+
+
+# ══════════════════════════════════════════════════════════════════
+#  GANG HOTSPOT ZONES
+# ══════════════════════════════════════════════════════════════════
+
+GANG_ZONES = {
+    "memphis": [
+        {
+            "zone": "Orange Mound — High Gang Activity",
+            "keywords": [
+                "park ave", "park avenue", "deadrick", "spottswood",
+                "semmes", "lamar ave", "kimball ave", "airways blvd",
+                "southern ave", "goodwyn", "alston", "macon rd",
+                "macon road", "given ave", "given avenue",
+            ],
+        },
+        {
+            "zone": "Frayser — High Gang Activity",
+            "keywords": [
+                "frayser blvd", "frayser boulevard", "n watkins",
+                "north watkins", "thomas st", "thomas street",
+                "hwy 51", "highway 51", "vollintine", "harvell",
+                "overton crossing", "rangeline", "range line",
+                "rugby", "snowden", "josephine", "dellwood",
+                "frayser", "hawkins mill",
+            ],
+        },
+        {
+            "zone": "South Memphis — High Gang Activity",
+            "keywords": [
+                "e mclemore", "w mclemore", "mclemore ave",
+                "elvis presley blvd", "s third st", "south third",
+                "horn lake rd", "horn lake road", "s parkway",
+                "south parkway", "florida st", "florida street",
+                "trigg ave", "trigg avenue", "person ave",
+                "mississippi blvd", "castalia st",
+            ],
+        },
+        {
+            "zone": "Hickory Hill — High Gang Activity",
+            "keywords": [
+                "hickory hill", "hickory ridge",
+                "knight arnold rd", "knight arnold road",
+                "shelby dr", "shelby drive", "germantown rd",
+                "germantown road", "ridgeway rd", "ridgeway road",
+                "mendenhall", "e shelby dr",
+            ],
+        },
+        {
+            "zone": "Binghampton — High Gang Activity",
+            "keywords": [
+                "binghampton", "lester st", "lester street",
+                "tillman st", "tillman street", "broad ave",
+                "broad avenue", "n graham", "graham st",
+                "trezevant", "a w willis", "aw willis",
+            ],
+        },
+        {
+            "zone": "North Memphis — High Gang Activity",
+            "keywords": [
+                "smokey city", "klondike", "hyde park",
+                "hollywood", "n hollywood", "north hollywood",
+                "jackson ave", "jackson avenue", "n main",
+                "auction ave", "brinkley", "manassas",
+                "n second", "n 2nd", "joseph", "chelsea ave",
+            ],
+        },
+        {
+            "zone": "Whitehaven — High Gang Activity",
+            "keywords": [
+                "whitehaven", "white haven",
+                "brooks rd", "brooks road",
+                "american way", "kerr ave", "kerr avenue",
+                "swinnea", "tchulahoma", "get well rd",
+            ],
+        },
+        {
+            "zone": "Tate & Boyd Area — AOB Gang Hub",
+            "keywords": [
+                "tate ave", "tate street", "boyd st",
+                "boyd street", "boyd ave", "n tate",
+            ],
+        },
+        {
+            "zone": "Parkway Village — High Gang Activity",
+            "keywords": [
+                "parkway village", "e shelby dr",
+                "knight arnold", "millbranch",
+            ],
+        },
+        {
+            "zone": "Westwood — High Gang Activity",
+            "keywords": [
+                "westwood", "walker homes", "person ave",
+                "s westwood", "westhaven", "s parkway west",
+            ],
+        },
+    ],
+}
+
+def check_gang_hotspot(location, title, city):
+    if not location:
+        return False, None
+    zones = GANG_ZONES.get(city, [])
+    search_text = f"{location} {title or ''}".lower()
+    for zone in zones:
+        for keyword in zone["keywords"]:
+            if keyword.lower() in search_text:
+                return True, zone["zone"]
+    return False, None
+
+
+# ══════════════════════════════════════════════════════════════════
+#  10-CODE DICTIONARY — MEMPHIS
+# ══════════════════════════════════════════════════════════════════
+
+CODES_MEMPHIS = {
+    "10-0":   "use caution",
+    "10-1":   "poor radio signal",
+    "10-2":   "good radio signal",
+    "10-3":   "stop transmitting",
+    "10-4":   "acknowledged",
+    "10-5":   "relay message",
+    "10-6":   "busy stand by",
+    "10-7":   "out of service",
+    "10-8":   "in service available",
+    "10-9":   "repeat transmission",
+    "10-10":  "off duty",
+    "10-11":  "animal complaint",
+    "10-12":  "standby",
+    "10-13":  "weather and road conditions",
+    "10-14":  "civilian escort",
+    "10-15":  "subject in custody",
+    "10-16":  "domestic disturbance",
+    "10-17":  "pick up documents",
+    "10-18":  "complete assignment quickly",
+    "10-19":  "return to station",
+    "10-20":  "location",
+    "10-21":  "call by telephone",
+    "10-22":  "disregard cancel",
+    "10-23":  "arrived at scene",
+    "10-24":  "assignment completed",
+    "10-25":  "meet officer",
+    "10-26":  "estimated time of arrival",
+    "10-27":  "drivers license check",
+    "10-28":  "vehicle registration check",
+    "10-29":  "check for warrants",
+    "10-30":  "unauthorized use of radio",
+    "10-31":  "crime in progress",
+    "10-32":  "person with a gun",
+    "10-33":  "emergency all units stand by",
+    "10-34":  "open door or window",
+    "10-35":  "alarm",
+    "10-36":  "correct time",
+    "10-37":  "suspicious vehicle",
+    "10-38":  "traffic stop",
+    "10-39":  "proceed with lights and siren",
+    "10-40":  "silent run no lights or siren",
+    "10-41":  "beginning tour of duty",
+    "10-42":  "ending tour of duty",
+    "10-43":  "information",
+    "10-44":  "request permission to leave patrol",
+    "10-45":  "dead animal",
+    "10-46":  "assist motorist",
+    "10-47":  "emergency road repairs needed",
+    "10-48":  "accident property damage only",
+    "10-49":  "accident personal injury",
+    "10-50":  "accident fatality",
+    "10-51":  "request tow truck",
+    "10-52":  "ambulance request",
+    "10-53":  "dead on arrival",
+    "10-54":  "livestock on road",
+    "10-55":  "drunk driver",
+    "10-56":  "intoxicated pedestrian",
+    "10-57":  "hit and run accident",
+    "10-58":  "direct traffic",
+    "10-59":  "suspicious person",
+    "10-60":  "squad in vicinity",
+    "10-61":  "personnel in area",
+    "10-62":  "reply to message",
+    "10-63":  "prepare to copy",
+    "10-64":  "message for local delivery",
+    "10-65":  "net message assignment",
+    "10-66":  "suspicious package",
+    "10-67":  "person calling for help",
+    "10-68":  "dispatch information",
+    "10-69":  "message received",
+    "10-70":  "prowler",
+    "10-71":  "shooting",
+    "10-72":  "stabbing",
+    "10-73":  "smoke report",
+    "10-74":  "negative",
+    "10-75":  "in contact with",
+    "10-76":  "en route",
+    "10-77":  "estimated time of arrival",
+    "10-78":  "need assistance",
+    "10-79":  "notify investigator",
+    "10-80":  "pursuit in progress",
+    "10-81":  "breathalyzer report",
+    "10-82":  "reserve lodging",
+    "10-83":  "school crossing detail",
+    "10-84":  "advise estimated time of arrival",
+    "10-85":  "delayed",
+    "10-86":  "officer on duty",
+    "10-87":  "pick up checks",
+    "10-88":  "present phone number of officer",
+    "10-89":  "bomb threat",
+    "10-90":  "bank alarm",
+    "10-91":  "pick up prisoner",
+    "10-91A": "vicious animal",
+    "10-91B": "stray animal",
+    "10-91C": "injured animal",
+    "10-91D": "dead animal",
+    "10-91E": "animal bite",
+    "10-92":  "improperly parked vehicle",
+    "10-93":  "blockade",
+    "10-94":  "drag racing",
+    "10-95":  "subject in custody",
+    "10-96":  "mental health subject",
+    "10-97":  "arrived at scene",
+    "10-98":  "escaped prisoner",
+    "10-99":  "officer needs help emergency",
+    "10-100": "bathroom break",
+    "10-200": "police needed at this location",
+}
+
+def translate_ten_codes(transcript, city):
+    translated = transcript
+    sorted_codes = sorted(CODES_MEMPHIS.items(), key=lambda x: len(x[0]), reverse=True)
+    for code, meaning in sorted_codes:
+        num = code.replace("10-", "").replace("10 ", "")
+        patterns = [
+            rf"\b10[-\s]?{re.escape(num)}\b",
+            rf"\bten[-\s]{re.escape(num)}\b",
+        ]
+        for pattern in patterns:
+            translated = re.sub(pattern, meaning, translated, flags=re.IGNORECASE)
+    return re.sub(r" {2,}", " ", translated).strip()
+
+
+# ══════════════════════════════════════════════════════════════════
+#  MEMPHIS LANDMARK LOOKUP TABLE
+# ══════════════════════════════════════════════════════════════════
+
+MEMPHIS_LANDMARKS = {
+    "super low":             (35.1281, -90.0372),
+    "autozone park":         (35.1467, -90.0490),
+    "liberty park":          (35.1189, -90.0528),
+    "shelby farms":          (35.1503, -89.8724),
+    "overton park":          (35.1489, -89.9841),
+    "mud island":            (35.1584, -90.0565),
+    "beale street":          (35.1396, -90.0502),
+    "graceland":             (35.0472, -90.0232),
+    "wolfchase":             (35.2018, -89.8241),
+    "eastgate":              (35.1186, -89.8812),
+    "hickory ridge mall":    (35.0556, -89.9268),
+    "oak court":             (35.1180, -89.9506),
+    "poplar plaza":          (35.1279, -89.9503),
+    "southland mall":        (35.0281, -90.0187),
+    "highland strip":        (35.1283, -89.9387),
+    "cooper young":          (35.1175, -89.9837),
+    "broad avenue":          (35.1503, -89.9641),
+    "downtown memphis":      (35.1495, -90.0490),
+    "medical district":      (35.1389, -90.0367),
+    "methodist hospital":    (35.1389, -90.0367),
+    "regional medical":      (35.1389, -90.0367),
+    "the med":               (35.1389, -90.0367),
+    "lebonheur":             (35.1503, -90.0367),
+    "st jude":               (35.1516, -90.0412),
+    "u of m":                (35.1189, -89.9387),
+    "university of memphis": (35.1189, -89.9387),
+    "memphis international": (35.0424, -89.9768),
+    "memphis airport":       (35.0424, -89.9768),
+    "fedex forum":           (35.1382, -90.0504),
+    "pink palace":           (35.1189, -89.9503),
+    "stax museum":           (35.1083, -90.0187),
+    "national civil rights": (35.1346, -90.0587),
+}
+
+def check_landmark(location_text):
+    if not location_text:
+        return None
+    text = location_text.lower()
+    for keyword, coords in MEMPHIS_LANDMARKS.items():
+        if keyword in text:
+            print(f"  Landmark match: '{keyword}' -> {coords}")
+            return coords
+    return None
+
+
+# ══════════════════════════════════════════════════════════════════
+#  GEOCODING CHAIN
+# ══════════════════════════════════════════════════════════════════
+
+def geocode_location(location_text, city):
+    if not location_text:
+        return CITIES[city]["center"]
+
+    location_text = apply_cad_corrections(location_text)
+
+    landmark = check_landmark(location_text)
+    if landmark:
+        return landmark
+
+    city_info    = CITIES[city]
+    city_label   = city_info["label"]
+    google_key   = os.environ.get("GOOGLE_MAPS_KEY", "")
+    geocodio_key = os.environ.get("GEOCODIO_KEY", "")
+
+    location_queries = [location_text]
+
+    cross_match = re.match(
+        r'^(\d+\s+)([^,]+?)\s+and\s+(.+)$',
+        location_text.strip(), re.IGNORECASE
+    )
+    intersection_match = re.match(
+        r'^([^,\d][^,]+?)\s+and\s+([^,]+)$',
+        location_text.strip(), re.IGNORECASE
+    ) if not cross_match else None
+
+    if cross_match:
+        number  = cross_match.group(1).strip()
+        street1 = cross_match.group(2).strip()
+        street2 = cross_match.group(3).strip()
+        location_queries = [f"{street1} and {street2}", f"{number} {street1}", street1]
+        print(f"  Numbered intersection — trying: {location_queries}")
+    elif intersection_match:
+        street1 = intersection_match.group(1).strip()
+        street2 = intersection_match.group(2).strip()
+        location_queries = [f"{street1} and {street2}", street1, street2]
+        print(f"  Pure intersection — trying: {location_queries}")
+
+    def in_city(lat, lng):
+        clat, clng = city_info["center"]
+        return abs(lat - clat) + abs(lng - clng) < 2.0
+
+    # Step 1: Shelby County 911 address database
+    try:
+        normalized = location_text.strip().upper()
+        rows = sb_get(
+            "memphis_addresses",
+            params={"address": f"eq.{normalized}", "select": "lat,lng", "limit": 1}
+        )
+        if rows:
+            lat, lng = float(rows[0]['lat']), float(rows[0]['lng'])
+            if in_city(lat, lng):
+                print(f"  Geocoded (911 DB): {normalized} -> {lat}, {lng}")
+                return lat, lng
+    except Exception as e:
+        print(f"  911 DB error: {e}")
+
+    # Step 2: Google Places API
+    if google_key:
+        try:
+            r = requests.get(
+                "https://maps.googleapis.com/maps/api/place/findplacefromtext/json",
+                params={
+                    "input":        f"{location_text}, {city_label}",
+                    "inputtype":    "textquery",
+                    "fields":       "geometry,name,formatted_address",
+                    "locationbias": f"circle:30000@{city_info['center'][0]},{city_info['center'][1]}",
+                    "key":          google_key,
+                },
+                timeout=10,
+            )
+            data = r.json()
+            if data.get("status") == "OK" and data.get("candidates"):
+                loc = data["candidates"][0]["geometry"]["location"]
+                lat, lng = float(loc["lat"]), float(loc["lng"])
+                if in_city(lat, lng):
+                    print(f"  Geocoded (Places): {location_text} -> {lat}, {lng}")
+                    return lat, lng
+        except Exception as e:
+            print(f"  Places API error: {e}")
+
+    # Step 3: Google Geocoding API
+    if google_key:
+        for query in location_queries:
+            try:
+                r = requests.get(
+                    "https://maps.googleapis.com/maps/api/geocode/json",
+                    params={"address": f"{query}, {city_label}", "key": google_key},
+                    timeout=10,
+                )
+                data = r.json()
+                if data.get("status") == "OK":
+                    loc = data["results"][0]["geometry"]["location"]
+                    lat, lng = float(loc["lat"]), float(loc["lng"])
+                    if in_city(lat, lng):
+                        print(f"  Geocoded (Google): {query} -> {lat}, {lng}")
+                        return lat, lng
+            except Exception as e:
+                print(f"  Google geocoding error: {e}")
+
+    # Step 4: Geocodio
+    if geocodio_key:
+        for query in location_queries:
+            try:
+                r = requests.get(
+                    "https://api.geocod.io/v1.7/geocode",
+                    params={"q": f"{query}, {city_label}", "api_key": geocodio_key, "limit": 1},
+                    timeout=10,
+                )
+                data    = r.json()
+                results = data.get("results", [])
+                if results:
+                    loc = results[0]["location"]
+                    lat, lng = float(loc["lat"]), float(loc["lng"])
+                    if in_city(lat, lng):
+                        print(f"  Geocoded (Geocodio): {query} -> {lat}, {lng}")
+                        return lat, lng
+            except Exception as e:
+                print(f"  Geocodio error: {e}")
+
+    # Step 5: Nominatim
+    for query in location_queries:
+        try:
+            time.sleep(1)
+            r = requests.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={"q": f"{query}, {city_label}", "format": "json", "limit": 1},
+                headers={
+                    "User-Agent": "HoodBrief/1.0 (hoodbrief@proton.me)",
+                    "Accept":     "application/json",
+                },
+                timeout=10,
+            )
+            results = r.json()
+            if results:
+                lat, lng = float(results[0]["lat"]), float(results[0]["lon"])
+                if in_city(lat, lng):
+                    print(f"  Geocoded (Nominatim): {query} -> {lat}, {lng}")
+                    return lat, lng
+        except Exception as e:
+            print(f"  Nominatim error: {e}")
+
+    print(f"  Falling back to city center for: {location_text}")
+    return CITIES[city]["center"]
+
+
+# ══════════════════════════════════════════════════════════════════
+#  AUDIO CAPTURE
+# ══════════════════════════════════════════════════════════════════
+
+def capture_chunk(stream_url, duration=CHUNK_SECONDS):
+    response = requests.get(stream_url, stream=True, timeout=15)
+    response.raise_for_status()
+    audio_data = b""
+    start = time.time()
+    for chunk in response.iter_content(chunk_size=4096):
+        audio_data += chunk
+        if time.time() - start >= duration:
+            break
+    return audio_data
+
+
+# ══════════════════════════════════════════════════════════════════
+#  TRANSCRIPTION — faster-whisper (local CPU, zero API cost)
+#  Replaces OpenAI Whisper API to eliminate per-call charges
+#  Model: base (74M params) — better accuracy, still fast on CPU
+# ══════════════════════════════════════════════════════════════════
+
+def transcribe(audio_bytes):
+    tmp_path = None
+    for attempt in range(MAX_RETRIES):
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+                f.write(audio_bytes)
+                tmp_path = f.name
+
+            model = get_whisper_model()
+            segments, info = model.transcribe(
+                tmp_path,
+                language="en",
+                beam_size=1,           # Fastest decode
+                best_of=1,             # No sampling
+                temperature=0.0,       # Greedy decode
+                vad_filter=True,       # Skip silent sections automatically
+                vad_parameters={
+                    "min_silence_duration_ms": 300,
+                    "threshold": 0.65,      # Higher = more aggressive noise rejection
+                    "min_speech_duration_ms": 250,  # Ignore very short speech bursts
+                },
+                initial_prompt=(
+                    "Police scanner radio dispatch Memphis Tennessee MPD. "
+                    "Ten codes, unit numbers, street addresses."
+                ),
+            )
+            text = " ".join(s.text for s in segments).strip()
+
+            # Reject hallucinations — repeating phrases are a telltale sign
+            if text:
+                words = text.lower().split()
+                if len(words) > 6:
+                    # Check for excessive repetition (e.g. "26. 26. 26. 26...")
+                    unique_words = set(words)
+                    if len(unique_words) / len(words) < 0.25:
+                        print(f"  [Whisper] Repetition detected — rejecting transcript")
+                        return ""
+                # Reject known hallucination phrases
+                hallucination_markers = [
+                    "15-year-old harper", "vintage rock t-shirt",
+                    "french signing verse", "jack cuts his hair",
+                    "2.5 million", "police scanner radio dispatch",
+                    "all feels right in the world",
+                    "bus cutting his way to a small fortune",
+                ]
+                tl = text.lower()
+                if any(marker in tl for marker in hallucination_markers):
+                    print(f"  [Whisper] Known hallucination — rejecting transcript")
+                    return ""
+
+            return text
+
+        except Exception as e:
+            print(f"  Transcribe attempt {attempt+1} failed: {e}")
+            time.sleep(2)
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
+    return ""
+
+
+# ══════════════════════════════════════════════════════════════════
+#  RULE-BASED INCIDENT PARSER
+#  Zero API cost — regex + keyword matching
+#  Works on translated transcripts (10-codes already converted)
+#  Handles real scanner patterns: priority, location, unit extraction
+# ══════════════════════════════════════════════════════════════════
+
+# Priority 1 — violent, weapons, pursuit, officer needs help
+P1_PATTERNS = [
+    r'\bpriority\s*one\b', r'\bpriority\s*1\b', r'\bp[\-\s]?1\b',
+    r'\bshooting\b', r'\bshots?\s+fired\b', r'\bperson\s+with\s+a\s+gun\b',
+    r'\bperson\s+with\s+a\s+weapon\b', r'\barmed\b', r'\bgun\b',
+    r'\brobbery\b', r'\bpursuit\b', r'\bchase\b', r'\bfleeing\b',
+    r'\bfoot\s+chase\b', r'\bvehicle\s+pursuit\b',
+    r'\bofficer\s+needs\s+help\b', r'\bneed\s+assistance\b',
+    r'\bneed\s+backup\b', r'\brequesting\s+backup\b',
+    r'\baggravated\s+assault\b', r'\bhomicide\b', r'\bmurder\b',
+    r'\bkidnap\b', r'\bhostage\b', r'\bweapon\b', r'\bknife\b',
+    r'\bcrime\s+in\s+progress\b', r'\bin\s+progress\b',
+    r'\bstabbing\b', r'\bstab\b', r'\bbomb\s+threat\b',
+    r'\brape\b', r'\bsexual\s+assault\b',
+]
+
+# Priority 2 — urgent but not immediate
+P2_PATTERNS = [
+    r'\bpriority\s*two\b', r'\bpriority\s*2\b', r'\bp[\-\s]?2\b',
+    r'\bdomestic\b', r'\bburglary\b', r'\bbreak[\-\s]?in\b',
+    r'\baccident\b', r'\bcollision\b', r'\bcrash\b',
+    r'\bassault\b', r'\bsuspicious\b', r'\bthreat\b',
+    r'\bhit\s+and\s+run\b', r'\bdrug\b', r'\bnarcotic\b',
+    r'\bvandalism\b', r'\btrespassing\b', r'\bstalking\b',
+    r'\bbreaking\s+and\s+entering\b',
+]
+
+# Medical / EMS
+MEDICAL_PATTERNS = [
+    r'\bmedical\b', r'\bambulance\b', r'\bems\b',
+    r'\bunconsci\w+\b', r'\bunresponsive\b', r'\boverdos\w+\b',
+    r'\bnot\s+breathing\b', r'\bcardiac\b', r'\bseizure\b',
+    r'\binjur\w+\b', r'\bdown\b',
+]
+
+# Noise / hallucination detection — reject these
+NOISE_PHRASES = [
+    "police scanner radio dispatch", "ten codes", "radio dispatch",
+    "scanner radio", "t-shirt", "vintage rock", "robot", "investment",
+    "sister", "harper", "real file", "thank you for", "your check",
+    "great investment", "15-year-old",
+    "hours on yesterday", "two front fingers",
+    "sigma 5", "all feels right",
+    "small fortune", "cuts his own hair",
+]
+
+# Location extraction — ordered from most to least specific
+LOCATION_PATTERNS = [
+    # Numbered address + street with suffix
+    r'(?:at|on|to|near)\s+(\d+\s+[\w\s]{2,35}?\s+(?:ave(?:nue)?|st(?:reet)?|rd|road|blvd|boulevard|dr(?:ive)?|ln|lane|way|cir(?:cle)?|ct|court|pl(?:ace)?|pkwy|parkway|hwy|highway))',
+    # Pure intersection
+    r'((?:[NSEW]\s+)?[\w]+\s+(?:ave(?:nue)?|st(?:reet)?|rd|road|blvd|dr(?:ive)?|ln|way)\s+and\s+[\w\s]{3,25})',
+    # Numbered address no suffix (e.g. 5137 Finchwood)
+    r'(?:at|on|to|near|of)\s+(\d+\s+[A-Z][\w\s]{2,25})',
+    # Any numbered address
+    r'(\d{3,5}\s+[A-Z][\w]{3,20})',
+    # Interstate / highway
+    r'\b(interstate\s+\d+|i-\d+|highway\s+\d+|hwy\s+\d+|state\s+route\s+\d+)\b',
+]
+
+# Unit extraction
+UNIT_PATTERNS = [
+    r'\bunits?\s+([\d\w\-]+(?:\s*(?:and|,)\s*[\d\w\-]+)*)',
+    r'\b(wp[\-\s]?\d+)\b',
+    r'\b(\d{2,3})\s+(?:en\s+route|responding|on\s+scene|copy)',
+]
+
+# Title mapping — first keyword match wins
+TITLE_MAP = [
+    ('shooting',            'Shooting'),
+    ('shots fired',         'Shots Fired'),
+    ('shots',               'Shots Fired'),
+    ('homicide',            'Homicide'),
+    ('murder',              'Homicide Call'),
+    ('person with a gun',   'Armed Person'),
+    ('armed',               'Armed Subject'),
+    ('robbery',             'Robbery in Progress'),
+    ('kidnap',              'Kidnapping'),
+    ('hostage',             'Hostage Situation'),
+    ('pursuit',             'Vehicle Pursuit'),
+    ('chase',               'Pursuit in Progress'),
+    ('foot chase',          'Foot Pursuit'),
+    ('stabbing',            'Stabbing'),
+    ('aggravated assault',  'Aggravated Assault'),
+    ('assault',             'Assault'),
+    ('domestic',            'Domestic Disturbance'),
+    ('burglary',            'Burglary'),
+    ('break-in',            'Breaking and Entering'),
+    ('drug',                'Drug Activity'),
+    ('need assistance',     'Officer Needs Assistance'),
+    ('backup',              'Officer Needs Backup'),
+    ('bomb threat',         'Bomb Threat'),
+    ('suspicious',          'Suspicious Person'),
+    ('threat',              'Threat Report'),
+    ('accident',            'Traffic Accident'),
+    ('collision',           'Traffic Collision'),
+    ('crash',               'Vehicle Crash'),
+    ('hit and run',         'Hit and Run'),
+    ('medical',             'Medical Emergency'),
+    ('ambulance',           'Medical Emergency'),
+    ('overdose',            'Overdose'),
+    ('unconscious',         'Unconscious Person'),
+    ('weapon',              'Weapons Call'),
+    ('vandalism',           'Vandalism'),
+    ('trespass',            'Trespassing'),
+]
+
+def parse_incident(transcript_translated, city):
+    """
+    Rule-based incident parser — zero API cost.
+    Extracts priority, title, location, and unit from translated transcripts.
+    """
+    text = transcript_translated.strip()
+    tl   = text.lower()
+
+    # Reject if too short
+    if len(tl) < 15:
+        return {"incident": False}
+
+    # Reject hallucinations — noise phrases with no incident content
+    noise_hits = sum(1 for p in NOISE_PHRASES if p in tl)
+    has_incident_signal = (
+        any(re.search(p, tl, re.I) for p in P1_PATTERNS) or
+        any(re.search(p, tl, re.I) for p in P2_PATTERNS) or
+        any(re.search(p, tl, re.I) for p in MEDICAL_PATTERNS)
+    )
+    if noise_hits >= 1 and not has_incident_signal:
+        return {"incident": False}
+
+    # Determine priority
+    if any(re.search(p, tl, re.I) for p in P1_PATTERNS):
+        priority = "p1"
+    elif any(re.search(p, tl, re.I) for p in MEDICAL_PATTERNS):
+        priority = "medical"
+    elif any(re.search(p, tl, re.I) for p in P2_PATTERNS):
+        priority = "p2"
+    else:
+        return {"incident": False}
+
+    # Extract title — first keyword match
+    title = "Incident Response"
+    for keyword, label in TITLE_MAP:
+        if keyword in tl:
+            title = label
+            break
+
+    # Extract location — try each pattern
+    location = None
+    for pattern in LOCATION_PATTERNS:
+        m = re.search(pattern, text, re.I)
+        if m:
+            raw = m.group(1).strip()
+            # Clean up and title-case
+            location = re.sub(r'\s+', ' ', raw).strip().title()
+            # Filter out false positives that are too short
+            if len(location) > 4:
+                break
+            location = None
+
+    # Extract unit
+    unit = None
+    for pattern in UNIT_PATTERNS:
+        m = re.search(pattern, tl, re.I)
+        if m:
+            unit = m.group(1).strip().upper()
+            break
+
+    return {
+        "incident": True,
+        "title":    title,
+        "location": location or "Location unknown",
+        "priority": priority,
+        "unit":     unit or "",
+    }
+
+
+# ══════════════════════════════════════════════════════════════════
+#  SUPABASE INCIDENT WRITER
+# ══════════════════════════════════════════════════════════════════
+
+def save_incident(incident, city, transcript_original, transcript_translated,
+                  gang_hotspot, gang_zone, station, is_dispatch):
+    payload = {
+        "city":           city,
+        "title":          incident.get("title"),
+        "location":       incident.get("location"),
+        "lat":            incident.get("lat"),
+        "lng":            incident.get("lng"),
+        "unit":           incident.get("unit"),
+        "priority":       incident.get("priority"),
+        "transcript":     transcript_translated,
+        "transcript_raw": transcript_original,
+        "gang_hotspot":   gang_hotspot,
+        "gang_zone":      gang_zone,
+        "station":        station,
+        "is_dispatch":    is_dispatch,
+    }
+    sb_post("incidents", payload)
+
+
+# ══════════════════════════════════════════════════════════════════
+#  MAIN CITY LOOP
+# ══════════════════════════════════════════════════════════════════
+
+def run_city(city):
+    info       = CITIES[city]
+    stream_url = info["stream_url"]
+    label      = info["label"]
+
+    print(f"[{label}] Pipeline started — capturing {CHUNK_SECONDS}s chunks...")
+
+    while True:
+        try:
+            audio = capture_chunk(stream_url, CHUNK_SECONDS)
+            if len(audio) < 1000:
+                print(f"[{label}] Audio chunk too small — skipping")
+                time.sleep(5)
+                continue
+
+            transcript_raw = transcribe(audio)
+            if not transcript_raw or len(transcript_raw.strip()) < 8:
+                print(f"[{label}] No speech detected — skipping")
+                continue
+
+            print(f"[{label}] Raw: {transcript_raw[:120]}...")
+
+            transcript_translated = translate_ten_codes(transcript_raw, city)
+            if transcript_raw != transcript_translated:
+                print(f"[{label}] Translated: {transcript_translated[:120]}...")
+
+            # Pre-filter: skip GPT if no incident keywords found
+            if not has_incident_keywords(transcript_translated):
+                print(f"[{label}] No keywords — skipping GPT")
+                continue
+
+            parsed = parse_incident(transcript_translated, city)
+            if not parsed.get("incident"):
+                print(f"[{label}] No incident detected — skipping")
+                continue
+
+            priority = parsed.get("priority", "")
+            if priority not in ("p1", "p2", "medical"):
+                print(f"[{label}] Skipping {priority.upper()} — below threshold")
+                continue
+
+            location = parsed.get("location")
+            lat, lng = geocode_location(location, city)
+            parsed["lat"] = lat
+            parsed["lng"] = lng
+
+            station     = detect_station(lat, lng)
+            unit        = parsed.get("unit", "")
+            is_dispatch = is_dispatcher_call(unit, transcript_translated)
+            gang_hotspot, gang_zone = check_gang_hotspot(
+                location, parsed.get("title"), city
+            )
+
+            if station:      print(f"  Station: {station}")
+            if is_dispatch:  print(f"  📡 Dispatcher call: {unit}")
+            if gang_hotspot: print(f"  ⚠ Gang hotspot: {gang_zone}")
+
+            save_incident(
+                parsed, city,
+                transcript_raw, transcript_translated,
+                gang_hotspot, gang_zone, station, is_dispatch,
+            )
+
+            tags = []
+            if is_dispatch:  tags.append("📡 DISPATCH")
+            if station:      tags.append(station)
+            if gang_hotspot: tags.append(f"⚠ {gang_zone}")
+            tag_str = f" [{', '.join(tags)}]" if tags else ""
+            print(
+                f"[{label}] ✅ Saved: [{priority.upper()}] "
+                f"{parsed.get('title','?')} @ {parsed.get('location','?')}"
+                f"{tag_str}"
+            )
+
+        except requests.exceptions.ConnectionError:
+            print(f"[{label}] Stream connection lost — retrying in 10s")
+            time.sleep(10)
+        except requests.exceptions.HTTPError as e:
+            print(f"[{label}] HTTP error: {e} — retrying in 15s")
+            time.sleep(15)
+        except json.JSONDecodeError:
+            print(f"[{label}] GPT returned invalid JSON — skipping")
+        except Exception as e:
+            print(f"[{label}] Error: {e} — retrying in 5s")
+            time.sleep(5)
+
+
+# ══════════════════════════════════════════════════════════════════
+#  ENTRY POINT
+# ══════════════════════════════════════════════════════════════════
+
+if __name__ == "__main__":
+    print("╔══════════════════════════════════════════╗")
+    print("║  Hood Brief — Pipeline Starting          ║")
+    print("║  Memphis, TN — MPD Only                  ║")
+    print("╚══════════════════════════════════════════╝")
+
+    errors = []
+    if not SUPABASE_URL:   errors.append("SUPABASE_URL not set")
+    if not SUPABASE_KEY:   errors.append("SUPABASE_KEY not set")
+    for city, info in CITIES.items():
+        if not info["stream_url"]:
+            errors.append(f"{city.upper()}_STREAM_URL not set")
+
+    if errors:
+        print("\nMissing configuration:")
+        for e in errors: print(f"  ✗ {e}")
+        exit(1)
+
+    # Install beautifulsoup4 if not present
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:
+        print("Installing beautifulsoup4...")
+        os.system("pip install beautifulsoup4 --break-system-packages -q")
+        from bs4 import BeautifulSoup
+
+    threads = []
+
+    # Heatmap — load static points once at startup
+    hm = threading.Thread(target=load_heatmap, daemon=True, name="heatmap")
+    hm.start()
+    threads.append(hm)
+    print("  ✓ Started: Heatmap loader")
+
+    # Fugitive scraper — runs at startup then weekly
+    fg = threading.Thread(target=fugitive_scrape_loop, daemon=True, name="fugitives")
+    fg.start()
+    threads.append(fg)
+    print("  ✓ Started: Fugitive scraper (weekly)")
+
+    # Memphis scanner
+    for city in CITIES:
+        t = threading.Thread(target=run_city, args=(city,), daemon=True, name=city)
+        t.start()
+        threads.append(t)
+        print(f"  ✓ Started: {CITIES[city]['label']}")
+
+    print("\nAll threads running.\n")
+
+    try:
+        while True:
+            time.sleep(60)
+            alive = [t.name for t in threads if t.is_alive()]
+            dead  = [t.name for t in threads if not t.is_alive()]
+            status = f"[Heartbeat] Active: {', '.join(alive)}"
+            if dead: status += f" | DEAD: {', '.join(dead)}"
+            print(status)
+    except KeyboardInterrupt:
+        print("\nShutting down.")
