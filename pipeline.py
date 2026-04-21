@@ -60,9 +60,9 @@ _whisper_model = None
 def get_whisper_model():
     global _whisper_model
     if _whisper_model is None:
-        print("[Whisper] Loading faster-whisper tiny model on CPU...")
+        print("[Whisper] Loading faster-whisper base model on CPU...")
         _whisper_model = WhisperModel(
-            "tiny",
+            "base",
             device="cpu",
             compute_type="int8",  # Fastest on CPU, lowest memory
         )
@@ -1099,7 +1099,7 @@ def capture_chunk(stream_url, duration=CHUNK_SECONDS):
 # ══════════════════════════════════════════════════════════════════
 #  TRANSCRIPTION — faster-whisper (local CPU, zero API cost)
 #  Replaces OpenAI Whisper API to eliminate per-call charges
-#  Model: tiny (39M params) — fast on CPU, sufficient for scanner audio
+#  Model: base (74M params) — better accuracy, still fast on CPU
 # ══════════════════════════════════════════════════════════════════
 
 def transcribe(audio_bytes):
@@ -1119,8 +1119,9 @@ def transcribe(audio_bytes):
                 temperature=0.0,       # Greedy decode
                 vad_filter=True,       # Skip silent sections automatically
                 vad_parameters={
-                    "min_silence_duration_ms": 500,
-                    "threshold": 0.5,
+                    "min_silence_duration_ms": 300,
+                    "threshold": 0.65,      # Higher = more aggressive noise rejection
+                    "min_speech_duration_ms": 250,  # Ignore very short speech bursts
                 },
                 initial_prompt=(
                     "Police scanner radio dispatch Memphis Tennessee MPD. "
@@ -1128,6 +1129,29 @@ def transcribe(audio_bytes):
                 ),
             )
             text = " ".join(s.text for s in segments).strip()
+
+            # Reject hallucinations — repeating phrases are a telltale sign
+            if text:
+                words = text.lower().split()
+                if len(words) > 6:
+                    # Check for excessive repetition (e.g. "26. 26. 26. 26...")
+                    unique_words = set(words)
+                    if len(unique_words) / len(words) < 0.25:
+                        print(f"  [Whisper] Repetition detected — rejecting transcript")
+                        return ""
+                # Reject known hallucination phrases
+                hallucination_markers = [
+                    "15-year-old harper", "vintage rock t-shirt",
+                    "french signing verse", "jack cuts his hair",
+                    "2.5 million", "police scanner radio dispatch",
+                    "all feels right in the world",
+                    "bus cutting his way to a small fortune",
+                ]
+                tl = text.lower()
+                if any(marker in tl for marker in hallucination_markers):
+                    print(f"  [Whisper] Known hallucination — rejecting transcript")
+                    return ""
+
             return text
 
         except Exception as e:
@@ -1190,6 +1214,9 @@ NOISE_PHRASES = [
     "scanner radio", "t-shirt", "vintage rock", "robot", "investment",
     "sister", "harper", "real file", "thank you for", "your check",
     "great investment", "15-year-old",
+    "hours on yesterday", "two front fingers",
+    "sigma 5", "all feels right",
+    "small fortune", "cuts his own hair",
 ]
 
 # Location extraction — ordered from most to least specific
