@@ -1223,7 +1223,7 @@ NOISE_PHRASES = [
 LOCATION_PATTERNS = [
     # Numbered address + street with suffix
     r'(?:at|on|to|near)\s+(\d+\s+[\w\s]{2,35}?\s+(?:ave(?:nue)?|st(?:reet)?|rd|road|blvd|boulevard|dr(?:ive)?|ln|lane|way|cir(?:cle)?|ct|court|pl(?:ace)?|pkwy|parkway|hwy|highway))',
-    # Pure intersection
+    # Pure intersection with suffix
     r'((?:[NSEW]\s+)?[\w]+\s+(?:ave(?:nue)?|st(?:reet)?|rd|road|blvd|dr(?:ive)?|ln|way)\s+and\s+[\w\s]{3,25})',
     # Numbered address no suffix (e.g. 5137 Finchwood)
     r'(?:at|on|to|near|of)\s+(\d+\s+[A-Z][\w\s]{2,25})',
@@ -1231,6 +1231,10 @@ LOCATION_PATTERNS = [
     r'(\d{3,5}\s+[A-Z][\w]{3,20})',
     # Interstate / highway
     r'\b(interstate\s+\d+|i-\d+|highway\s+\d+|hwy\s+\d+|state\s+route\s+\d+)\b',
+    # Bare street name preceded by "on", "at" (e.g. "domestic on Gracewood")
+    r'(?:on|at|to|near)\s+([A-Z][a-z]{3,}(?:\s+[A-Z][a-z]{2,})?)',
+    # Known Memphis landmarks
+    r'\b(beale\s+street|elvis\s+presley|graceland|overton\s+park|shelby\s+farms|mud\s+island|fedex\s+forum|autozone\s+park|the\s+med|lebonheur|st\s+jude|union\s+avenue|poplar\s+avenue|summer\s+avenue|highland\s+avenue|airways\s+boulevard|lamar\s+avenue|winchester\s+road|covington\s+pike|stage\s+road|raleigh\s+lagrange|germantown\s+road|mendenhall\s+road|hickory\s+hill|american\s+way|brooks\s+road|horn\s+lake\s+road|elvis\s+presley\s+boulevard)\b',
 ]
 
 # Unit extraction
@@ -1340,10 +1344,14 @@ def parse_incident(transcript_translated, city):
             unit = m.group(1).strip().upper()
             break
 
+    # Don't save if we couldn't find a location — incomplete data
+    if not location:
+        return {"incident": False}
+
     return {
         "incident": True,
         "title":    title,
-        "location": location or "Location unknown",
+        "location": location,
         "priority": priority,
         "unit":     unit or "",
     }
