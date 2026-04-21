@@ -1,4 +1,4 @@
 faster-whisper
-openai
+google-genai
 requests
 beautifulsoup4
