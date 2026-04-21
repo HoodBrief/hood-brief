@@ -1403,11 +1403,6 @@ def run_city(city):
             if transcript_raw != transcript_translated:
                 print(f"[{label}] Translated: {transcript_translated[:120]}...")
 
-            # Pre-filter: skip GPT if no incident keywords found
-            if not has_incident_keywords(transcript_translated):
-                print(f"[{label}] No keywords — skipping GPT")
-                continue
-
             parsed = parse_incident(transcript_translated, city)
             if not parsed.get("incident"):
                 print(f"[{label}] No incident detected — skipping")
