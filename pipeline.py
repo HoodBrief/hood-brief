@@ -33,19 +33,19 @@ import requests
 from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 from faster_whisper import WhisperModel
-from openai import OpenAI
+from google import genai
+from google.genai import types as genai_types
 
 # ══════════════════════════════════════════════════════════════════
 #  CONFIG
 # ══════════════════════════════════════════════════════════════════
 
-# OPENAI_API_KEY still needed for GPT parsing (not Whisper)
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 SUPABASE_URL   = os.environ.get("SUPABASE_URL",   "")
 SUPABASE_KEY   = os.environ.get("SUPABASE_KEY",   "")
 
-# OpenAI client — used ONLY for GPT incident parsing (not transcription)
-client = OpenAI(api_key=OPENAI_API_KEY)
+# Gemini client — free tier, replaces OpenAI GPT entirely
+gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
 CITIES = {
     "memphis": {
@@ -1149,34 +1149,45 @@ def transcribe(audio_bytes):
 
 
 # ══════════════════════════════════════════════════════════════════
-#  GPT INCIDENT PARSER
+#  GEMINI INCIDENT PARSER
+#  Uses Gemini 2.0 Flash — free tier: 1,500 req/day, 1M tokens/day
+#  Replaces OpenAI GPT-4o-mini entirely
 # ══════════════════════════════════════════════════════════════════
 
-def parse_incident(transcript_translated, city):
-    city_info              = CITIES[city]
-    city_label             = city_info["label"]
-    center_lat, center_lng = city_info["center"]
+GEMINI_SYSTEM_PROMPT = """Memphis PD scanner parser. 10-codes already translated. Return JSON only.
 
-    system_prompt = f"""Memphis PD scanner parser. 10-codes already translated. Return JSON only.
+No incident: {"incident":false}
 
-No incident: {{"incident":false}}
-
-Incident: {{"incident":true,"title":"<6 words>","location":"<street address or intersection>","priority":"<p1|p2|p3|medical|fire>","unit":"<unit numbers>"}}
+Incident: {"incident":true,"title":"<6 words>","location":"<street address or intersection>","priority":"<p1|p2|p3|medical|fire>","unit":"<unit numbers>"}
 
 Priority: p1=violent/weapons/pursuit/officer needs help, p2=injury accident/burglary/domestic, p3=minor/noise/traffic, medical=EMS, fire=fire/hazmat
 
 Fix misheared Memphis street names. WP units are dispatchers."""
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user",   "content": transcript_translated},
-        ],
-        response_format={"type": "json_object"},
-        temperature=0.1,
-    )
-    return json.loads(response.choices[0].message.content)
+def parse_incident(transcript_translated, city):
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = gemini_client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=transcript_translated,
+                config=genai_types.GenerateContentConfig(
+                    system_instruction=GEMINI_SYSTEM_PROMPT,
+                    temperature=0.1,
+                    max_output_tokens=300,
+                    response_mime_type="application/json",
+                ),
+            )
+            text = response.text.strip()
+            # Strip any markdown fences if present
+            if text.startswith("```"):
+                text = text.split("```")[1]
+                if text.startswith("json"):
+                    text = text[4:]
+            return json.loads(text.strip())
+        except Exception as e:
+            print(f"  Gemini attempt {attempt+1} failed: {e}")
+            time.sleep(2)
+    return {"incident": False}
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -1305,7 +1316,7 @@ if __name__ == "__main__":
     print("╚══════════════════════════════════════════╝")
 
     errors = []
-    if not OPENAI_API_KEY: errors.append("OPENAI_API_KEY not set")
+    if not GEMINI_API_KEY:   errors.append("GEMINI_API_KEY not set")
     if not SUPABASE_URL:   errors.append("SUPABASE_URL not set")
     if not SUPABASE_KEY:   errors.append("SUPABASE_KEY not set")
     for city, info in CITIES.items():
