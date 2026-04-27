@@ -1015,6 +1015,10 @@ MEMPHIS_LANDMARKS = {
     "criminal justice":      (35.1468, -90.0512),
     "elvis presley trauma":  (35.1389, -90.0367),
     "trauma center":         (35.1389, -90.0367),
+    "waldron":               (35.1389, -90.0367),
+    "medical district apart": (35.1389, -90.0367),
+    "cooper young":          (35.1175, -89.9837),
+    "new brunswick":         (35.2013, -89.7812),
 }
 
 def check_landmark(location_text):
@@ -1065,6 +1069,13 @@ def geocode_location(location_text, city):
         query = query.strip().upper()
         if not query or len(query) < 3:
             return None
+        # Normalize direction words to abbreviations to match 911 DB format
+        # DB uses "N COOPER ST" not "NORTH COOPER ST"
+        query = re.sub(r'\bNORTH\b', 'N', query)
+        query = re.sub(r'\bSOUTH\b', 'S', query)
+        query = re.sub(r'\bEAST\b',  'E', query)
+        query = re.sub(r'\bWEST\b',  'W', query)
+        query = query.strip()
         # Sentinel: increment last char by 1 to get upper bound
         sentinel = query[:-1] + chr(ord(query[-1]) + 1)
         try:
@@ -1417,6 +1428,9 @@ TITLE_MAP = [
     ('in custody',          'Subject in Custody'),
     ('requesting assistance','Assistance Requested'),
     ('enroute',             'Units En Route'),
+    ('large fight',         'Large Fight in Progress'),
+    ('fight',               'Fight in Progress'),
+    ('brawl',               'Brawl in Progress'),
     ('hold up',             'Hold-Up Alarm'),
     ('holdup',              'Hold-Up Alarm'),
     ('commercial alarm',    'Commercial Alarm'),
