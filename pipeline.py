@@ -289,6 +289,7 @@ def geocode_fugitive_address(address_text):
     """
     Geocode a fugitive's last known address.
     Tries 911 DB first, then Google, then Nominatim.
+    Fugitives use Google as fallback since addresses come from warrant listings.
     Returns (lat, lng) or None if not found or outside region.
     """
     if not address_text or "unknown" in address_text.lower() or "at large" in address_text.lower():
@@ -945,163 +946,132 @@ def check_landmark(location_text):
 # ══════════════════════════════════════════════════════════════════
 
 def geocode_location(location_text, city):
+    """
+    Strict geocoding — only posts if location is verifiable.
+    Chain: CAD corrections -> Landmark lookup -> 911 DB -> None
+    No external APIs — eliminates false geocodes from Google guessing.
+    Returns ((lat, lng), display_label) if found, or (None, None) if unverifiable.
+    display_label is set for intersections e.g. "Intersection: Airways & Democrat"
+    """
     if not location_text:
-        return CITIES[city]["center"]
+        return None, None
 
+    # Apply CAD name corrections first
     location_text = apply_cad_corrections(location_text)
 
+    # Step 0: Landmark lookup — known Memphis named locations
     landmark = check_landmark(location_text)
     if landmark:
-        return landmark
+        return landmark, None
 
-    city_info    = CITIES[city]
-    city_label   = city_info["label"]
-    google_key   = os.environ.get("GOOGLE_MAPS_KEY", "")
-    geocodio_key = os.environ.get("GEOCODIO_KEY", "")
-
-    location_queries = [location_text]
-
-    cross_match = re.match(
-        r'^(\d+\s+)([^,]+?)\s+and\s+(.+)$',
-        location_text.strip(), re.IGNORECASE
-    )
-    intersection_match = re.match(
-        r'^([^,\d][^,]+?)\s+and\s+([^,]+)$',
-        location_text.strip(), re.IGNORECASE
-    ) if not cross_match else None
-
-    if cross_match:
-        number  = cross_match.group(1).strip()
-        street1 = cross_match.group(2).strip()
-        street2 = cross_match.group(3).strip()
-        location_queries = [f"{street1} and {street2}", f"{number} {street1}", street1]
-        print(f"  Numbered intersection — trying: {location_queries}")
-    elif intersection_match:
-        street1 = intersection_match.group(1).strip()
-        street2 = intersection_match.group(2).strip()
-        location_queries = [f"{street1} and {street2}", street1, street2]
-        print(f"  Pure intersection — trying: {location_queries}")
+    city_info = CITIES[city]
 
     def in_city(lat, lng):
         clat, clng = city_info["center"]
         return abs(lat - clat) + abs(lng - clng) < 2.0
 
-    # Step 1: Shelby County 911 address database
-    # Try exact match first, then prefix match to handle missing street type suffix
+    # Step 1: Shelby County 911 address database — 256,684 verified addresses
+    # Dispatchers rarely say street type (St/Ave/Rd/Cir) so we always strip
+    # the suffix and use prefix matching — "3749 DENVER" matches "3749 DENVER ST"
     try:
         normalized = location_text.strip().upper()
-        # Remove common trailing words that may not be in DB
-        # e.g. "3749 Denver Street Memphis TN" -> "3749 DENVER"
+        # Strip city/state suffix
         clean = re.sub(r'\s+(MEMPHIS|TN|TENNESSEE).*$', '', normalized).strip()
+        # Strip street type suffix — we use prefix match so suffix is irrelevant
+        clean = re.sub(
+            r'\s+(AVE|ST|RD|BLVD|DR|LN|WAY|CIR|CT|PL|PKWY|HWY|ROAD|'
+            r'AVENUE|STREET|DRIVE|LANE|CIRCLE|COURT|PLACE|PARKWAY|HIGHWAY)$',
+            '', clean
+        ).strip()
 
-        # Try exact match first
-        rows = sb_get(
-            "memphis_addresses",
-            params={"address": f"eq.{clean}", "select": "lat,lng", "limit": 1}
-        )
-        # If no exact match, try prefix match (e.g. "3749 DENVER" matches "3749 DENVER ST")
-        if not rows:
-            rows = sb_get(
-                "memphis_addresses",
-                params={"address": f"ilike.{clean}*", "select": "lat,lng", "limit": 1}
-            )
-        if rows:
-            lat, lng = float(rows[0]['lat']), float(rows[0]['lng'])
-            if in_city(lat, lng):
-                print(f"  Geocoded (911 DB): {clean} -> {lat}, {lng}")
-                return lat, lng
+        def street_exists(name):
+            """Check if a street name exists anywhere in the 911 DB."""
+            name = name.strip()
+            if not name or len(name) < 3:
+                return False
+            # Strip direction prefix for lookup
+            bare = re.sub(r'^[NSEW]\s+', '', name).strip()
+            for q in ([name, bare] if bare != name else [name]):
+                try:
+                    rows = sb_get(
+                        "memphis_addresses",
+                        params={"address": f"ilike.{q}*", "select": "lat,lng", "limit": 1}
+                    )
+                    if rows:
+                        return True
+                except Exception:
+                    pass
+            return False
+
+        def lookup_address(query):
+            """Prefix lookup — returns (lat, lng) or None."""
+            if not query or len(query) < 3:
+                return None
+            try:
+                rows = sb_get(
+                    "memphis_addresses",
+                    params={"address": f"ilike.{query}*", "select": "lat,lng", "limit": 1}
+                )
+                if rows:
+                    lat, lng = float(rows[0]['lat']), float(rows[0]['lng'])
+                    if in_city(lat, lng):
+                        return lat, lng
+            except Exception:
+                pass
+            return None
+
+        # ── Intersection handling ──
+        if ' AND ' in clean:
+            parts = [p.strip() for p in clean.split(' AND ', 1)]
+            street1, street2 = parts[0], parts[1]
+            # Strip number prefix from intersection streets if present
+            street1_bare = re.sub(r'^\d+\s+', '', street1).strip()
+            street2_bare = re.sub(r'^\d+\s+', '', street2).strip()
+            # Verify BOTH streets exist in the 911 DB
+            s1_valid = street_exists(street1_bare)
+            s2_valid = street_exists(street2_bare)
+            if s1_valid and s2_valid:
+                # Both streets verified — use midpoint of first street's coords
+                coords = lookup_address(street1_bare) or lookup_address(street2_bare)
+                if coords:
+                    # Format display name as "Intersection: Street1 & Street2"
+                    s1_display = street1_bare.title()
+                    s2_display = street2_bare.title()
+                    intersection_label = f"Intersection: {s1_display} & {s2_display}"
+                    print(f"  Geocoded (911 DB intersection): {intersection_label} -> {coords}")
+                    return coords, intersection_label
+            elif s1_valid:
+                coords = lookup_address(street1_bare)
+                if coords:
+                    print(f"  Geocoded (911 DB): {street1_bare}* -> {coords}")
+                    return coords, None
+            elif s2_valid:
+                coords = lookup_address(street2_bare)
+                if coords:
+                    print(f"  Geocoded (911 DB): {street2_bare}* -> {coords}")
+                    return coords, None
+            # Neither street verified
+            print(f"  Location not verified — skipping: {location_text}")
+            return None, None
+
+        # ── Single address / street ──
+        queries = [clean]
+        stripped_dir = re.sub(r'^[NSEW]\s+', '', clean).strip()
+        if stripped_dir != clean:
+            queries.append(stripped_dir)
+
+        for query in queries:
+            coords = lookup_address(query)
+            if coords:
+                print(f"  Geocoded (911 DB): {query}* -> {coords}")
+                return coords, None
+
     except Exception as e:
         print(f"  911 DB error: {e}")
 
-    # Step 2: Google Places API
-    # Skip single words — prevents false geocodes like "Claim" or "Show Down"
-    if google_key and len(location_text.strip().split()) > 1:
-        try:
-            r = requests.get(
-                "https://maps.googleapis.com/maps/api/place/findplacefromtext/json",
-                params={
-                    "input":        f"{location_text}, {city_label}",
-                    "inputtype":    "textquery",
-                    "fields":       "geometry,name,formatted_address",
-                    "locationbias": f"circle:30000@{city_info['center'][0]},{city_info['center'][1]}",
-                    "key":          google_key,
-                },
-                timeout=10,
-            )
-            data = r.json()
-            if data.get("status") == "OK" and data.get("candidates"):
-                loc = data["candidates"][0]["geometry"]["location"]
-                lat, lng = float(loc["lat"]), float(loc["lng"])
-                if in_city(lat, lng):
-                    print(f"  Geocoded (Places): {location_text} -> {lat}, {lng}")
-                    return lat, lng
-        except Exception as e:
-            print(f"  Places API error: {e}")
-
-    # Step 3: Google Geocoding API
-    if google_key:
-        for query in location_queries:
-            try:
-                r = requests.get(
-                    "https://maps.googleapis.com/maps/api/geocode/json",
-                    params={"address": f"{query}, {city_label}", "key": google_key},
-                    timeout=10,
-                )
-                data = r.json()
-                if data.get("status") == "OK":
-                    loc = data["results"][0]["geometry"]["location"]
-                    lat, lng = float(loc["lat"]), float(loc["lng"])
-                    if in_city(lat, lng):
-                        print(f"  Geocoded (Google): {query} -> {lat}, {lng}")
-                        return lat, lng
-            except Exception as e:
-                print(f"  Google geocoding error: {e}")
-
-    # Step 4: Geocodio
-    if geocodio_key:
-        for query in location_queries:
-            try:
-                r = requests.get(
-                    "https://api.geocod.io/v1.7/geocode",
-                    params={"q": f"{query}, {city_label}", "api_key": geocodio_key, "limit": 1},
-                    timeout=10,
-                )
-                data    = r.json()
-                results = data.get("results", [])
-                if results:
-                    loc = results[0]["location"]
-                    lat, lng = float(loc["lat"]), float(loc["lng"])
-                    if in_city(lat, lng):
-                        print(f"  Geocoded (Geocodio): {query} -> {lat}, {lng}")
-                        return lat, lng
-            except Exception as e:
-                print(f"  Geocodio error: {e}")
-
-    # Step 5: Nominatim
-    for query in location_queries:
-        try:
-            time.sleep(1)
-            r = requests.get(
-                "https://nominatim.openstreetmap.org/search",
-                params={"q": f"{query}, {city_label}", "format": "json", "limit": 1},
-                headers={
-                    "User-Agent": "HoodBrief/1.0 (hoodbrief@proton.me)",
-                    "Accept":     "application/json",
-                },
-                timeout=10,
-            )
-            results = r.json()
-            if results:
-                lat, lng = float(results[0]["lat"]), float(results[0]["lon"])
-                if in_city(lat, lng):
-                    print(f"  Geocoded (Nominatim): {query} -> {lat}, {lng}")
-                    return lat, lng
-        except Exception as e:
-            print(f"  Nominatim error: {e}")
-
-    print(f"  Falling back to city center for: {location_text}")
-    return CITIES[city]["center"]
-
+    # Not found in 911 DB or landmarks — do not post
+    print(f"  Location not verified — skipping: {location_text}")
+    return None, None
 
 # ══════════════════════════════════════════════════════════════════
 #  AUDIO CAPTURE
@@ -1354,6 +1324,11 @@ def parse_incident(transcript_translated, city):
     else:
         return {"incident": False}
 
+    # Require minimum transcript length for P1 — reduces false positives from
+    # garbled audio that happens to contain a keyword like "armed" or "alarm"
+    if priority == "p1" and len(tl.split()) < 6:
+        return {"incident": False}
+
     # Extract title — first keyword match
     title = "Incident Response"
     for keyword, label in TITLE_MAP:
@@ -1384,6 +1359,24 @@ def parse_incident(transcript_translated, city):
 
     # Don't save if we couldn't find a location — incomplete data
     if not location:
+        return {"incident": False}
+
+    # Reject obviously bad locations
+    BAD_LOCATIONS = [
+        "this thing", "claim", "show down", "the area", "the scene",
+        "location", "address", "service", "station", "precinct",
+        "dispatch", "check", "unit", "bravo", "alpha", "charlie",
+        "delta", "echo", "foxtrot", "tango", "victor", "whiskey",
+        "in here", "out here", "up here", "down here", "over here",
+        "the office", "the precinct", "the station",
+    ]
+    if location.lower().strip() in BAD_LOCATIONS:
+        return {"incident": False}
+
+    # Reject locations that are too short or just numbers
+    if len(location.strip()) < 4:
+        return {"incident": False}
+    if re.match(r"^[\d\s\.\-]+$", location):
         return {"incident": False}
 
     return {
@@ -1460,9 +1453,16 @@ def run_city(city):
                 continue
 
             location = parsed.get("location")
-            lat, lng = geocode_location(location, city)
+            coords, intersection_label = geocode_location(location, city)
+            if coords is None:
+                print(f"[{label}] Location not verifiable — not posting")
+                continue
+            lat, lng = coords
             parsed["lat"] = lat
             parsed["lng"] = lng
+            # Use intersection label as location if available
+            if intersection_label:
+                parsed["location"] = intersection_label
 
             station     = detect_station(lat, lng)
             unit        = parsed.get("unit", "")
