@@ -30,6 +30,7 @@ import json
 import tempfile
 import threading
 import requests
+from openai import OpenAI
 from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 
