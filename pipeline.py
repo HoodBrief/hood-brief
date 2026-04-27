@@ -31,7 +31,6 @@ import tempfile
 import threading
 import requests
 from openai import OpenAI
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 
@@ -1187,8 +1186,10 @@ def transcribe(audio_bytes):
 # Priority 1 — violent, weapons, pursuit, officer needs help
 P1_PATTERNS = [
     r'\bpriority\s*one\b', r'\bpriority\s*1\b', r'\bp[\-\s]?1\b',
-    r'\bshooting\b', r'\bshots?\s+fired\b', r'\bperson\s+with\s+a\s+gun\b',
-    r'\bperson\s+with\s+a\s+weapon\b', r'\barmed\b', r'\bgun\b',
+    r'\bshooting\b', r'\bshots?\s+fired\b', r'\bshots\b',
+    r'\bperson\s+with\s+a\s+gun\b', r'\bperson\s+with\s+a\s+weapon\b',
+    r'\bmen\s+with\s+guns\b', r'\bman\s+with\s+a\s+gun\b',
+    r'\barmed\b', r'\bgun\b', r'\bguns\b',
     r'\brobbery\b', r'\bpursuit\b', r'\bchase\b', r'\bfleeing\b',
     r'\bfoot\s+chase\b', r'\bvehicle\s+pursuit\b',
     r'\bofficer\s+needs\s+help\b', r'\bneed\s+assistance\b',
@@ -1198,6 +1199,22 @@ P1_PATTERNS = [
     r'\bcrime\s+in\s+progress\b', r'\bin\s+progress\b',
     r'\bstabbing\b', r'\bstab\b', r'\bbomb\s+threat\b',
     r'\brape\b', r'\bsexual\s+assault\b',
+    r'\bcit\b',
+    r'\bdead\b', r'\bdeceased\b', r'\bdoa\b', r'\bshot\b',
+    r'\bwill\s+shoot\b', r'\bshoot\s+each\s+other\b',
+    r'\bagainst\s+their\s+will\b',
+    r'\bthreatening\b', r'\bthreatened\b',
+    r'\bopen\s+fire\b', r'\bfiring\s+shots\b',
+    r'\bhold\s*up\b', r'\bholdup\b',
+    r'\bhold-?up\s+alarm\b',
+    r'\bqrf\b',
+    r'\bnational\s+guard\b',
+    r'\benroute\b', r'\ben\s+route\b',
+    r'\bcode\s+3\b', r'\bcode3\b',
+    r'\bswat\b',
+    r'\bperimeter\b', r'\bbarricade\b',
+    r'\bactive\s+shooter\b',
+    r'\brefuse\s+to\s+leave\b',
 ]
 
 # Priority 2 — urgent but not immediate
@@ -1209,6 +1226,23 @@ P2_PATTERNS = [
     r'\bhit\s+and\s+run\b', r'\bdrug\b', r'\bnarcotic\b',
     r'\bvandalism\b', r'\btrespassing\b', r'\bstalking\b',
     r'\bbreaking\s+and\s+entering\b',
+    r'\bwelfare\s+check\b', r'\bcheck\s+on\s+the\s+welfare\b',
+    r'\bcheck\s+welfare\b', r'\bcommercial\s+alarm\b',
+    r'\bresidential\s+alarm\b', r'\bburglar\s+alarm\b',
+    r'\bburglar\b', r'\bburglar\w*\b',
+    r'\bdispatched\b',
+    r'\bpersonal\s+call\b',
+    r'\bcheck\s+on\b',
+    r'\bmissing\s+juvenile\b', r'\bmissing\s+person\b',
+    r'\bmissing\s+child\b', r'\battempt\s+to\s+locate\b',
+    r'\bATL\b', r'\brunaway\b',
+    r'\bharassment\b', r'\bharassing\b',
+    r'\bstolen\s+vehicle\b', r'\bvehicle\s+theft\b',
+    r'\btheft\b', r'\bshoplifting\b', r'\bstolen\b',
+    r'\bmerchandise\b', r'\bfelony\b',
+    r'\bin\s+custody\b', r'\bdetective\b',
+    r'\brequesting\s+assistance\b', r'\bassistance\b',
+    r'\btrespas\w+\b',
 ]
 
 # Medical / EMS
@@ -1217,6 +1251,15 @@ MEDICAL_PATTERNS = [
     r'\bunconsci\w+\b', r'\bunresponsive\b', r'\boverdos\w+\b',
     r'\bnot\s+breathing\b', r'\bcardiac\b', r'\bseizure\b',
     r'\binjur\w+\b', r'\bdown\b',
+    r'\bmedic\b',
+    r'\btransport\w*\b',
+    r'\bfacility\b',
+    r'\bmeds\b', r'\bmedication\b',
+    r'\bpsych\w*\b', r'\bmental\b',
+    r'\bptsd\b',
+    r'\bsuicid\w+\b', r'\bsuicide\b',
+    r'\bcpr\b',
+    r'\bopen\s+medic\b', r'\bmedic\s+door\b',
 ]
 
 # Noise / hallucination detection — reject these
@@ -1328,6 +1371,16 @@ TITLE_MAP = [
     ('active shooter',      'Active Shooter'),
     ('perimeter',           'Perimeter Established'),
     ('barricade',           'Barricaded Subject'),
+    ('theft',               'Theft'),
+    ('shoplifting',         'Shoplifting'),
+    ('stolen',              'Stolen Vehicle/Property'),
+    ('straight stolen',     'Stolen Vehicle'),
+    ('burglar alarm',       'Burglar Alarm'),
+    ('burglary alarm',      'Burglar Alarm'),
+    ('merchandise',         'Theft of Merchandise'),
+    ('felony',              'Felony Response'),
+    ('in custody',          'Subject in Custody'),
+    ('requesting assistance','Assistance Requested'),
     ('enroute',             'Units En Route'),
     ('hold up',             'Hold-Up Alarm'),
     ('holdup',              'Hold-Up Alarm'),
