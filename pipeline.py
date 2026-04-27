@@ -71,15 +71,33 @@ def sb_headers():
     }
 
 def sb_get(path, params=None):
-    r = requests.get(
-        f"{SUPABASE_URL}/rest/v1/{path}",
-        params=params,
-        headers={
-            "apikey":        SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}",
-        },
-        timeout=10,
-    )
+    """
+    Supabase REST GET with special handling for ilike wildcard (*).
+    requests encodes * as %2A which breaks Supabase pattern matching.
+    We build the URL manually to preserve * in filter values.
+    """
+    base_url = f"{SUPABASE_URL}/rest/v1/{path}"
+    headers = {
+        "apikey":        SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+    }
+    if not params:
+        r = requests.get(base_url, headers=headers, timeout=15)
+        r.raise_for_status()
+        return r.json()
+
+    # Build query string manually to prevent * from being encoded as %2A
+    from urllib.parse import quote
+    parts = []
+    for k, v in params.items():
+        # Encode key and value but preserve * for ilike patterns
+        encoded_k = quote(str(k), safe='')
+        encoded_v = quote(str(v), safe='*')  # safe='*' keeps * unencoded
+        parts.append(f"{encoded_k}={encoded_v}")
+    query_string = "&".join(parts)
+    url = f"{base_url}?{query_string}"
+
+    r = requests.get(url, headers=headers, timeout=15)
     r.raise_for_status()
     return r.json()
 
@@ -587,6 +605,12 @@ CAD_CORRECTIONS = {
     "walker":          "Walker Avenue",
     "hunter":          "Hunter Avenue",
     "hunter ave":      "Hunter Avenue",
+    "apollo":          "Applegate",
+    "haven court":     "Haven Court",
+    "horizon lake":    "Horizon Lake Drive",
+    "golden oaks":     "Golden Oaks Cove",
+    "stage road":      "Stage Road",
+    "corning":         "Corning Avenue",
 }
 
 def apply_cad_corrections(location_text):
