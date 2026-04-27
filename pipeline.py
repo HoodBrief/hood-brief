@@ -39,6 +39,7 @@ from bs4 import BeautifulSoup
 #  CONFIG
 # ══════════════════════════════════════════════════════════════════
 
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 SUPABASE_URL   = os.environ.get("SUPABASE_URL",   "")
 SUPABASE_KEY   = os.environ.get("SUPABASE_KEY",   "")
 
@@ -585,6 +586,8 @@ CAD_CORRECTIONS = {
     "young":           "Young Avenue",
     "cooper":          "Cooper Street",
     "walker":          "Walker Avenue",
+    "hunter":          "Hunter Avenue",
+    "hunter ave":      "Hunter Avenue",
 }
 
 def apply_cad_corrections(location_text):
@@ -1318,6 +1321,14 @@ TITLE_MAP = [
     ('harassment',          'Harassment'),
     ('stolen vehicle',      'Stolen Vehicle'),
     ('vehicle theft',       'Vehicle Theft'),
+    ('qrf',                 'QRF Deployment'),
+    ('national guard',      'National Guard Response'),
+    ('code 3',              'Emergency Response Code 3'),
+    ('swat',                'SWAT Response'),
+    ('active shooter',      'Active Shooter'),
+    ('perimeter',           'Perimeter Established'),
+    ('barricade',           'Barricaded Subject'),
+    ('enroute',             'Units En Route'),
     ('hold up',             'Hold-Up Alarm'),
     ('holdup',              'Hold-Up Alarm'),
     ('commercial alarm',    'Commercial Alarm'),
