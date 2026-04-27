@@ -1473,6 +1473,9 @@ def run_city(city):
 
     print(f"[{label}] Pipeline started — capturing {CHUNK_SECONDS}s chunks...")
 
+    # Rolling buffer — keep previous chunk to catch dispatches that span two chunks
+    prev_transcript = ""
+
     while True:
         try:
             audio = capture_chunk(stream_url, CHUNK_SECONDS)
@@ -1484,6 +1487,7 @@ def run_city(city):
             transcript_raw = transcribe(audio)
             if not transcript_raw or len(transcript_raw.strip()) < 8:
                 print(f"[{label}] No speech detected — skipping")
+                prev_transcript = ""
                 continue
 
             print(f"[{label}] Raw: {transcript_raw[:120]}...")
@@ -1492,7 +1496,17 @@ def run_city(city):
             if transcript_raw != transcript_translated:
                 print(f"[{label}] Translated: {transcript_translated[:120]}...")
 
-            parsed = parse_incident(transcript_translated, city)
+            # Combine with previous chunk to catch multi-chunk dispatches
+            # e.g. chunk 1: "shooting at..." chunk 2: "...Winchester and Getwell"
+            if prev_transcript:
+                combined = f"{prev_transcript} {transcript_translated}".strip()
+            else:
+                combined = transcript_translated
+
+            # Update rolling buffer for next iteration
+            prev_transcript = transcript_translated
+
+            parsed = parse_incident(combined, city)
             if not parsed.get("incident"):
                 print(f"[{label}] No incident detected — skipping")
                 continue
@@ -1530,6 +1544,8 @@ def run_city(city):
                 transcript_raw, transcript_translated,
                 gang_hotspot, gang_zone, station, is_dispatch,
             )
+            # Clear buffer after save — prevents bleed into next call
+            prev_transcript = ""
 
             tags = []
             if is_dispatch:  tags.append("📡 DISPATCH")
