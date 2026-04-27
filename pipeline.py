@@ -959,6 +959,33 @@ MEMPHIS_LANDMARKS = {
     "pink palace":           (35.1189, -89.9503),
     "stax museum":           (35.1083, -90.0187),
     "national civil rights": (35.1346, -90.0587),
+    # Memphis Schools
+    "whitney elementary":    (35.2074, -90.0233),
+    "whitehaven high":       (35.0281, -90.0187),
+    "whitehaven high school": (35.0281, -90.0187),
+    "melrose high":          (35.0847, -90.0187),
+    "hamilton high":         (35.1189, -89.9387),
+    "east high":             (35.1283, -89.9387),
+    "trezevant high":        (35.1867, -90.0012),
+    "white station high":    (35.1283, -89.8912),
+    "craigmont high":        (35.2018, -89.9741),
+    "ridgeway high":         (35.0847, -89.8241),
+    "southland mall":        (35.0281, -90.0187),
+    # Hospitals / Medical
+    "regional one":          (35.1389, -90.0367),
+    "baptist memorial":      (35.1503, -90.0367),
+    "methodist le bonheur":  (35.1503, -90.0367),
+    "delta medical":         (35.1867, -89.9387),
+    "lakeside hospital":     (35.1867, -89.8912),
+    "veterans affairs":      (35.1503, -89.9387),
+    "va hospital":           (35.1503, -89.9387),
+    # Common dispatch locations
+    "201 poplar":            (35.1468, -90.0512),
+    "union mission":         (35.1468, -90.0512),
+    "shelby county jail":    (35.1468, -90.0512),
+    "criminal justice":      (35.1468, -90.0512),
+    "elvis presley trauma":  (35.1389, -90.0367),
+    "trauma center":         (35.1389, -90.0367),
 }
 
 def check_landmark(location_text):
@@ -1047,8 +1074,12 @@ def geocode_location(location_text, city):
                     lat, lng = float(rows[0]['lat']), float(rows[0]['lng'])
                     if in_city(lat, lng):
                         return lat, lng
-            except Exception:
-                pass
+                    else:
+                        print(f"  [911 DB] Out of city: {query} -> {lat}, {lng}")
+                else:
+                    print(f"  [911 DB] No match: ilike.{query}*")
+            except Exception as e:
+                print(f"  [911 DB] Error on '{query}': {e}")
             return None
 
         # ── Intersection handling ──
