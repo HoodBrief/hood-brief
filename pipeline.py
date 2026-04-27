@@ -572,6 +572,19 @@ CAD_CORRECTIONS = {
     "tchulahoma":      "Tchulahoma Road",
     "winchester":      "Winchester Road",
     "lamar":           "Lamar Avenue",
+    "lansdowne":       "Lansdowne Drive",
+    "norris":          "Norris Road",
+    "roosevelt":       "Roosevelt Street",
+    "tandon":          "Tandon Road",
+    "warford":         "Warford Street",
+    "goodlett":        "Goodlett Road",
+    "raines":          "Raines Road",
+    "shelby drive":    "Shelby Drive",
+    "knight arnold":   "Knight Arnold Road",
+    "hickory hill":    "Hickory Hill Road",
+    "young":           "Young Avenue",
+    "cooper":          "Cooper Street",
+    "walker":          "Walker Avenue",
 }
 
 def apply_cad_corrections(location_text):
@@ -1290,6 +1303,21 @@ TITLE_MAP = [
     ('transport',           'Medical Transport'),
     ('medic',               'Medical Emergency'),
     ('personal call',       'Personal Call'),
+    ('will shoot',          'Threat to Shoot'),
+    ('shoot each other',    'Threat to Shoot'),
+    ('men with guns',       'Armed Persons'),
+    ('man with a gun',      'Armed Person'),
+    ('against their will',  'Persons Held Against Will'),
+    ('threatening',         'Terroristic Threatening'),
+    ('missing juvenile',    'Missing Juvenile'),
+    ('missing person',      'Missing Person'),
+    ('missing child',       'Missing Child'),
+    ('attempt to locate',   'Attempt to Locate'),
+    ('atl',                 'Attempt to Locate'),
+    ('runaway',             'Runaway Juvenile'),
+    ('harassment',          'Harassment'),
+    ('stolen vehicle',      'Stolen Vehicle'),
+    ('vehicle theft',       'Vehicle Theft'),
     ('hold up',             'Hold-Up Alarm'),
     ('holdup',              'Hold-Up Alarm'),
     ('commercial alarm',    'Commercial Alarm'),
@@ -1386,6 +1414,11 @@ def parse_incident(transcript_translated, city):
         "nel poppery", "nell poppery", "river damage", "damage show",
         "thank you", "order school", "the call", "the scene",
         "towel avenue", "the road", "the street",
+        # Complaint/residence words that aren't addresses
+        "residence", "complainant", "complainants", "location",
+        "the residence", "their residence", "his residence",
+        "her residence", "front", "inside", "outside", "nearby",
+        "area", "scene", "vicinity", "neighborhood",
     ]
     if location.lower().strip() in BAD_LOCATIONS:
         return {"incident": False}
