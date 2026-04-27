@@ -32,7 +32,6 @@ import threading
 import requests
 from datetime import datetime, timezone
 from bs4 import BeautifulSoup
-from faster_whisper import WhisperModel
 
 # ══════════════════════════════════════════════════════════════════
 #  CONFIG
@@ -53,21 +52,8 @@ CHUNK_SECONDS            = 30
 MAX_RETRIES              = 3
 FUGITIVE_REFRESH_SECONDS = 604800  # 7 days
 
-# ── Faster-Whisper local model (runs on Railway CPU, zero API cost) ──
-# Model downloads on first startup (~150MB), cached for subsequent runs
-_whisper_model = None
-
-def get_whisper_model():
-    global _whisper_model
-    if _whisper_model is None:
-        print("[Whisper] Loading faster-whisper base model on CPU...")
-        _whisper_model = WhisperModel(
-            "base",
-            device="cpu",
-            compute_type="int8",  # Fastest on CPU, lowest memory
-        )
-        print("[Whisper] Model ready")
-    return _whisper_model
+# OpenAI client — used ONLY for Whisper transcription (not GPT)
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -1117,82 +1103,61 @@ def capture_chunk(stream_url, duration=CHUNK_SECONDS):
     return audio_data
 
 
+
 # ══════════════════════════════════════════════════════════════════
-#  TRANSCRIPTION — faster-whisper (local CPU, zero API cost)
-#  Replaces OpenAI Whisper API to eliminate per-call charges
-#  Model: base (74M params) — better accuracy, still fast on CPU
+#  TRANSCRIPTION — OpenAI Whisper API
+#  ~$6/month running 24/7 — accurate scanner transcription
+#  Rule-based parser replaces GPT — zero GPT cost
 # ══════════════════════════════════════════════════════════════════
 
 def transcribe(audio_bytes):
-    tmp_path = None
     for attempt in range(MAX_RETRIES):
+        tmp_path = None
         try:
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
                 f.write(audio_bytes)
                 tmp_path = f.name
-
-            model = get_whisper_model()
-            segments, info = model.transcribe(
-                tmp_path,
-                language="en",
-                beam_size=1,           # Fastest decode
-                best_of=1,             # No sampling
-                temperature=0.0,       # Greedy decode
-                vad_filter=True,       # Skip silent sections automatically
-                vad_parameters={
-                    "min_silence_duration_ms": 300,
-                    "threshold": 0.65,      # Higher = more aggressive noise rejection
-                    "min_speech_duration_ms": 250,  # Ignore very short speech bursts
-                },
-                initial_prompt=(
-                    "Police scanner radio dispatch Memphis Tennessee MPD. "
-                    "Ten codes, unit numbers, street addresses."
-                ),
-            )
-            text = " ".join(s.text for s in segments).strip()
-
-            # Reject hallucinations — repeating phrases are a telltale sign
+            with open(tmp_path, "rb") as audio_file:
+                result = client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_file,
+                    language="en",
+                    prompt=(
+                        "Memphis Police Department scanner dispatch. "
+                        "Ten codes, unit numbers like 564 or WP-12, "
+                        "Memphis street addresses and intersections."
+                    )
+                )
+            text = result.text.strip()
             if text:
                 words = text.lower().split()
                 if len(words) > 6:
-                    # Check for excessive repetition (e.g. "26. 26. 26. 26...")
                     unique_words = set(words)
                     if len(unique_words) / len(words) < 0.25:
                         print(f"  [Whisper] Repetition detected — rejecting transcript")
                         return ""
-                # Reject known hallucination phrases
                 hallucination_markers = [
-                    # Broadcastify audio ads
                     "buzzcutting his way to a small fortune",
                     "every time he cuts his own hair",
                     "sound of jack", "sound of claire",
                     "cooking dinner at home",
                     "fraud alert from wells fargo",
-                    "flagging a charge",
-                    # Whisper hallucinations
                     "15-year-old harper", "vintage rock t-shirt",
-                    "french signing verse",
-                    "2.5 million", "police scanner radio dispatch",
+                    "police scanner radio dispatch",
                     "all feels right in the world",
                 ]
-                tl = text.lower()
-                if any(marker in tl for marker in hallucination_markers):
+                if any(m in text.lower() for m in hallucination_markers):
                     print(f"  [Whisper] Known hallucination — rejecting transcript")
                     return ""
-
             return text
-
         except Exception as e:
-            print(f"  Transcribe attempt {attempt+1} failed: {e}")
+            print(f"  Whisper attempt {attempt+1} failed: {e}")
             time.sleep(2)
         finally:
             if tmp_path and os.path.exists(tmp_path):
-                try:
-                    os.unlink(tmp_path)
-                except Exception:
-                    pass
+                try: os.unlink(tmp_path)
+                except: pass
     return ""
-
 
 # ══════════════════════════════════════════════════════════════════
 #  RULE-BASED INCIDENT PARSER
