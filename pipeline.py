@@ -611,6 +611,11 @@ CAD_CORRECTIONS = {
     "golden oaks":     "Golden Oaks Cove",
     "stage road":      "Stage Road",
     "corning":         "Corning Avenue",
+    "valentine":       "Vollintine Avenue",
+    "valentine ave":   "Vollintine Avenue",
+    "parkhurst":       "Parkhurst Court",
+    "cynthia":         "Cynthia Place",
+    "haven":           "Haven Court",
 }
 
 def apply_cad_corrections(location_text):
@@ -1252,7 +1257,7 @@ P2_PATTERNS = [
     r'\bpriority\s*two\b', r'\bpriority\s*2\b', r'\bp[\-\s]?2\b',
     r'\bdomestic\b', r'\bburglary\b', r'\bbreak[\-\s]?in\b',
     r'\baccident\b', r'\bcollision\b', r'\bcrash\b',
-    r'\bassault\b', r'\bsuspicious\b', r'\bthreat\b',
+    r'\bassault\w*\b', r'\bsuspicious\b', r'\bthreat\w*\b',
     r'\bhit\s+and\s+run\b', r'\bdrug\b', r'\bnarcotic\b',
     r'\bvandalism\b', r'\btrespassing\b', r'\bstalking\b',
     r'\bbreaking\s+and\s+entering\b',
