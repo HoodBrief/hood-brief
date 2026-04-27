@@ -1048,49 +1048,45 @@ def check_landmark(location_text):
 
 def geocode_location(location_text, city):
     """
-    Strict geocoding — only posts if location is verifiable.
-    Chain: CAD corrections -> Landmark -> 911 DB prefix search -> None
-    Uses range-based prefix search (gte/lt) which works with any B-tree index.
-    Returns ((lat, lng), display_label) or (None, None).
+    Tiered geocoding — posts if location is verifiable by any method:
+    1. Landmark lookup (hardcoded Memphis locations)
+    2. Shelby County 911 address database (256,684 verified addresses)
+    3. Google Geocoding API (fallback — only accepts results within Memphis bounds)
+    Returns ((lat, lng), display_label) or (None, None) if unverifiable.
     """
     if not location_text:
         return None, None
 
     location_text = apply_cad_corrections(location_text)
 
+    # Step 0: Landmark lookup
     landmark = check_landmark(location_text)
     if landmark:
         return landmark, None
 
-    city_info = CITIES[city]
+    city_info  = CITIES[city]
+    google_key = os.environ.get("GOOGLE_MAPS_KEY", "")
 
-    def in_city(lat, lng):
-        clat, clng = city_info["center"]
-        return abs(lat - clat) + abs(lng - clng) < 2.0
+    # Memphis bounds — reject any geocode result outside this box
+    def in_memphis(lat, lng):
+        return 34.9 <= lat <= 35.5 and -90.4 <= lng <= -89.6
 
     def prefix_lookup(query):
         """
-        Range-based prefix search: gte.QUERY and lt.QUERY+sentinel
-        Works with standard B-tree index, no ilike needed.
-        '1865 BARTLETT' matches '1865 BARTLETT RD' because:
-          gte.'1865 BARTLETT' = True (equal prefix)
-          lt.'1865 BARTLETTU' = True ('1865 BARTLETT RD' < '1865 BARTLETTU')
+        Range-based prefix search using gte/lt operators.
+        '1865 BARTLETT' matches '1865 BARTLETT RD' in the DB.
         """
         query = query.strip().upper()
         if not query or len(query) < 3:
             return None
-        # Normalize direction words to abbreviations to match 911 DB format
-        # DB uses "N COOPER ST" not "NORTH COOPER ST"
+        # Normalize direction words to match 911 DB format (N/S/E/W)
         query = re.sub(r'\bNORTH\b', 'N', query)
         query = re.sub(r'\bSOUTH\b', 'S', query)
         query = re.sub(r'\bEAST\b',  'E', query)
         query = re.sub(r'\bWEST\b',  'W', query)
         query = query.strip()
-        # Sentinel: increment last char by 1 to get upper bound
         sentinel = query[:-1] + chr(ord(query[-1]) + 1)
         try:
-            # Use URL string directly to allow duplicate 'address' param key
-            # Supabase REST: ?address=gte.X&address=lt.Y for range query
             from urllib.parse import quote
             q_enc = quote(query, safe='')
             s_enc = quote(sentinel, safe='')
@@ -1107,16 +1103,41 @@ def geocode_location(location_text, city):
             rows = r.json()
             if rows:
                 lat, lng = float(rows[0]["lat"]), float(rows[0]["lng"])
-                if in_city(lat, lng):
+                if in_memphis(lat, lng):
                     return lat, lng
         except Exception as e:
             print(f"  [911 DB] Error on '{query}': {e}")
         return None
 
-    # Normalize input
+    def google_geocode(query):
+        """Google Geocoding fallback — only accepts results within Memphis bounds."""
+        if not google_key:
+            print(f"  [Google] GOOGLE_MAPS_KEY not set — skipping fallback")
+            return None
+        if not query or len(query) < 4:
+            return None
+        try:
+            r = requests.get(
+                "https://maps.googleapis.com/maps/api/geocode/json",
+                params={"address": f"{query}, Memphis TN", "key": google_key},
+                timeout=10,
+            )
+            data = r.json()
+            if data.get("status") == "OK":
+                loc = data["results"][0]["geometry"]["location"]
+                lat, lng = float(loc["lat"]), float(loc["lng"])
+                if in_memphis(lat, lng):
+                    print(f"  Geocoded (Google): {query} -> {lat}, {lng}")
+                    return lat, lng
+                else:
+                    print(f"  [Google] Out of Memphis bounds: {query} -> {lat}, {lng}")
+        except Exception as e:
+            print(f"  [Google] Error on '{query}': {e}")
+        return None
+
+    # Normalize input — strip suffix for prefix matching
     normalized = location_text.strip().upper()
     clean = re.sub(r'\s+(MEMPHIS|TN|TENNESSEE).*$', '', normalized).strip()
-    # Strip street type suffix — prefix search handles variants
     clean = re.sub(
         r'\s+(AVE|ST|RD|BLVD|DR|LN|WAY|CIR|CT|PL|PKWY|HWY|ROAD|'
         r'AVENUE|STREET|DRIVE|LANE|CIRCLE|COURT|PLACE|PARKWAY|HIGHWAY)$',
@@ -1140,11 +1161,17 @@ def geocode_location(location_text, city):
             print(f"  Geocoded (911 DB intersection): {label}")
             return c1, label
         elif c1:
-            print(f"  Geocoded (911 DB): {street1}* -> {c1}")
+            print(f"  Geocoded (911 DB): {street1}")
             return c1, None
         elif c2:
-            print(f"  Geocoded (911 DB): {street2}* -> {c2}")
+            print(f"  Geocoded (911 DB): {street2}")
             return c2, None
+
+        # Google fallback for intersection
+        coords = google_geocode(location_text)
+        if coords:
+            return coords, None
+
         print(f"  Location not verified — skipping: {location_text}")
         return None, None
 
@@ -1157,8 +1184,13 @@ def geocode_location(location_text, city):
     for query in queries:
         coords = prefix_lookup(query)
         if coords:
-            print(f"  Geocoded (911 DB): {query}* -> {coords}")
+            print(f"  Geocoded (911 DB): {query}")
             return coords, None
+
+    # Google fallback for single address
+    coords = google_geocode(location_text)
+    if coords:
+        return coords, None
 
     print(f"  Location not verified — skipping: {location_text}")
     return None, None
