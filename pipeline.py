@@ -31,6 +31,7 @@ import tempfile
 import threading
 import requests
 from openai import OpenAI
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 
