@@ -1282,6 +1282,16 @@ TITLE_MAP = [
     ('weapon',              'Weapons Call'),
     ('vandalism',           'Vandalism'),
     ('trespass',            'Trespassing'),
+    ('dead',                'Deceased Person'),
+    ('doa',                 'Dead on Arrival'),
+    ('suicide',             'Suicide Call'),
+    ('suicidal',            'Suicidal Subject'),
+    ('psych',               'Mental Health Call'),
+    ('mental',              'Mental Health Call'),
+    ('ptsd',                'Mental Health Call'),
+    ('transport',           'Medical Transport'),
+    ('medic',               'Medical Emergency'),
+    ('personal call',       'Personal Call'),
     ('hold up',             'Hold-Up Alarm'),
     ('holdup',              'Hold-Up Alarm'),
     ('commercial alarm',    'Commercial Alarm'),
@@ -1322,11 +1332,13 @@ def parse_incident(transcript_translated, city):
     elif any(re.search(p, tl, re.I) for p in P2_PATTERNS):
         priority = "p2"
     else:
+        print("  Routine call (P3) — skipping")
         return {"incident": False}
 
     # Require minimum transcript length for P1 — reduces false positives from
     # garbled audio that happens to contain a keyword like "armed" or "alarm"
     if priority == "p1" and len(tl.split()) < 6:
+        print("  P1 transcript too short — skipping")
         return {"incident": False}
 
     # Extract title — first keyword match
