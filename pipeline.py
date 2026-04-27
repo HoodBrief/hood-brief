@@ -545,6 +545,16 @@ CAD_CORRECTIONS = {
     "green creek":     "Green",
     "glenn rogers sr": "Glenn Rogers Senior",
     "channel 3":       "Channel Three",
+    # Common Whisper mishearings of Memphis streets
+    "shadywell":       "Shadywell Lane",
+    "shady well":      "Shadywell Lane",
+    "kimberville":     "Kimberley Street",
+    "covington pikes": "Covington Pike",
+    "coveington":      "Covington Pike",
+    "brownville":      "Brownsville Road",
+    "delsten":         "Delsan Road",
+    "gracewood":       "Gracewood Street",
+    "denver":          "Denver Street",
 }
 
 def apply_cad_corrections(location_text):
@@ -977,22 +987,35 @@ def geocode_location(location_text, city):
         return abs(lat - clat) + abs(lng - clng) < 2.0
 
     # Step 1: Shelby County 911 address database
+    # Try exact match first, then prefix match to handle missing street type suffix
     try:
         normalized = location_text.strip().upper()
+        # Remove common trailing words that may not be in DB
+        # e.g. "3749 Denver Street Memphis TN" -> "3749 DENVER"
+        clean = re.sub(r'\s+(MEMPHIS|TN|TENNESSEE).*$', '', normalized).strip()
+
+        # Try exact match first
         rows = sb_get(
             "memphis_addresses",
-            params={"address": f"eq.{normalized}", "select": "lat,lng", "limit": 1}
+            params={"address": f"eq.{clean}", "select": "lat,lng", "limit": 1}
         )
+        # If no exact match, try prefix match (e.g. "3749 DENVER" matches "3749 DENVER ST")
+        if not rows:
+            rows = sb_get(
+                "memphis_addresses",
+                params={"address": f"ilike.{clean}*", "select": "lat,lng", "limit": 1}
+            )
         if rows:
             lat, lng = float(rows[0]['lat']), float(rows[0]['lng'])
             if in_city(lat, lng):
-                print(f"  Geocoded (911 DB): {normalized} -> {lat}, {lng}")
+                print(f"  Geocoded (911 DB): {clean} -> {lat}, {lng}")
                 return lat, lng
     except Exception as e:
         print(f"  911 DB error: {e}")
 
     # Step 2: Google Places API
-    if google_key:
+    # Skip single words — prevents false geocodes like "Claim" or "Show Down"
+    if google_key and len(location_text.strip().split()) > 1:
         try:
             r = requests.get(
                 "https://maps.googleapis.com/maps/api/place/findplacefromtext/json",
@@ -1141,11 +1164,18 @@ def transcribe(audio_bytes):
                         return ""
                 # Reject known hallucination phrases
                 hallucination_markers = [
+                    # Broadcastify audio ads
+                    "buzzcutting his way to a small fortune",
+                    "every time he cuts his own hair",
+                    "sound of jack", "sound of claire",
+                    "cooking dinner at home",
+                    "fraud alert from wells fargo",
+                    "flagging a charge",
+                    # Whisper hallucinations
                     "15-year-old harper", "vintage rock t-shirt",
-                    "french signing verse", "jack cuts his hair",
+                    "french signing verse",
                     "2.5 million", "police scanner radio dispatch",
                     "all feels right in the world",
-                    "bus cutting his way to a small fortune",
                 ]
                 tl = text.lower()
                 if any(marker in tl for marker in hallucination_markers):
@@ -1282,6 +1312,14 @@ TITLE_MAP = [
     ('weapon',              'Weapons Call'),
     ('vandalism',           'Vandalism'),
     ('trespass',            'Trespassing'),
+    ('hold up',             'Hold-Up Alarm'),
+    ('holdup',              'Hold-Up Alarm'),
+    ('commercial alarm',    'Commercial Alarm'),
+    ('residential alarm',   'Residential Alarm'),
+    ('alarm',               'Alarm Response'),
+    ('cit',                 'Crisis Intervention Call'),
+    ('welfare check',       'Welfare Check'),
+    ('welfare',             'Welfare Check'),
 ]
 
 def parse_incident(transcript_translated, city):
