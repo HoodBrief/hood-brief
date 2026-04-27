@@ -943,7 +943,9 @@ def translate_ten_codes(transcript, city):
     for code, meaning in sorted_codes:
         num = code.replace("10-", "").replace("10 ", "")
         patterns = [
-            rf"\b10[-\s]?{re.escape(num)}\b",
+            # Require dash or space between "10" and the number
+            # This prevents "1046" from matching "10-46"
+            rf"\b10[-\s]{re.escape(num)}\b",
             rf"\bten[-\s]{re.escape(num)}\b",
         ]
         for pattern in patterns:
@@ -1019,6 +1021,14 @@ MEMPHIS_LANDMARKS = {
     "medical district apart": (35.1389, -90.0367),
     "cooper young":          (35.1175, -89.9837),
     "new brunswick":         (35.2013, -89.7812),
+    "kroger":                (35.1295, -89.9477),
+    "bojangles":             (35.1760, -89.8809),
+    "lauderdale":            (35.1222, -90.0445),
+    "plaza avenue":          (35.1307, -89.9477),
+    "fleet street":          (35.1389, -90.0250),
+    "chelsea avenue":        (35.1867, -89.9741),
+    "east parkway":          (35.1389, -89.9741),
+    "poplar and east parkway": (35.1389, -89.9741),
 }
 
 def check_landmark(location_text):
@@ -1532,6 +1542,16 @@ def parse_incident(transcript_translated, city):
         "the residence", "their residence", "his residence",
         "her residence", "front", "inside", "outside", "nearby",
         "area", "scene", "vicinity", "neighborhood",
+        # Unit designations that get extracted as addresses
+        "bravo", "alpha", "charlie", "delta", "echo", "foxtrot",
+        "robo", "wpha", "check", "disregard", "negative",
+        "information national", "raise dispatch",
+        # Interstate fragments
+        "interstate 40 kids", "interstate 40 kids fighting",
+        "kids fighting to st", "kids fighting",
+        # Direction words alone
+        "north", "south", "east", "west",
+        "1760 north", "302 south",
     ]
     if location.lower().strip() in BAD_LOCATIONS:
         return {"incident": False}
