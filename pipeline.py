@@ -1030,18 +1030,15 @@ def check_landmark(location_text):
 def geocode_location(location_text, city):
     """
     Strict geocoding — only posts if location is verifiable.
-    Chain: CAD corrections -> Landmark lookup -> 911 DB -> None
-    No external APIs — eliminates false geocodes from Google guessing.
-    Returns ((lat, lng), display_label) if found, or (None, None) if unverifiable.
-    display_label is set for intersections e.g. "Intersection: Airways & Democrat"
+    Chain: CAD corrections -> Landmark -> 911 DB prefix search -> None
+    Uses range-based prefix search (gte/lt) which works with any B-tree index.
+    Returns ((lat, lng), display_label) or (None, None).
     """
     if not location_text:
         return None, None
 
-    # Apply CAD name corrections first
     location_text = apply_cad_corrections(location_text)
 
-    # Step 0: Landmark lookup — known Memphis named locations
     landmark = check_landmark(location_text)
     if landmark:
         return landmark, None
@@ -1052,116 +1049,94 @@ def geocode_location(location_text, city):
         clat, clng = city_info["center"]
         return abs(lat - clat) + abs(lng - clng) < 2.0
 
-    # Step 1: Shelby County 911 address database — 256,684 verified addresses
-    # Dispatchers rarely say street type (St/Ave/Rd/Cir) so we always strip
-    # the suffix and use prefix matching — "3749 DENVER" matches "3749 DENVER ST"
-    try:
-        normalized = location_text.strip().upper()
-        # Strip city/state suffix
-        clean = re.sub(r'\s+(MEMPHIS|TN|TENNESSEE).*$', '', normalized).strip()
-        # Strip street type suffix — we use prefix match so suffix is irrelevant
-        clean = re.sub(
-            r'\s+(AVE|ST|RD|BLVD|DR|LN|WAY|CIR|CT|PL|PKWY|HWY|ROAD|'
-            r'AVENUE|STREET|DRIVE|LANE|CIRCLE|COURT|PLACE|PARKWAY|HIGHWAY)$',
-            '', clean
-        ).strip()
-
-        def street_exists(name):
-            """Check if a street name exists anywhere in the 911 DB."""
-            name = name.strip()
-            if not name or len(name) < 3:
-                return False
-            # Strip direction prefix for lookup
-            bare = re.sub(r'^[NSEW]\s+', '', name).strip()
-            for q in ([name, bare] if bare != name else [name]):
-                try:
-                    rows = sb_get(
-                        "memphis_addresses",
-                        params={"address": f"ilike.{q}*", "select": "lat,lng", "limit": 1}
-                    )
-                    if rows:
-                        return True
-                except Exception:
-                    pass
-            return False
-
-        def lookup_address(query):
-            """Prefix lookup — returns (lat, lng) or None."""
-            if not query or len(query) < 3:
-                return None
-            try:
-                rows = sb_get(
-                    "memphis_addresses",
-                    params={"address": f"ilike.{query}*", "select": "lat,lng", "limit": 1}
-                )
-                if rows:
-                    lat, lng = float(rows[0]['lat']), float(rows[0]['lng'])
-                    if in_city(lat, lng):
-                        return lat, lng
-                    else:
-                        print(f"  [911 DB] Out of city: {query} -> {lat}, {lng}")
-                else:
-                    print(f"  [911 DB] No match: ilike.{query}*")
-            except Exception as e:
-                print(f"  [911 DB] Error on '{query}': {e}")
+    def prefix_lookup(query):
+        """
+        Range-based prefix search: gte.QUERY and lt.QUERY+sentinel
+        Works with standard B-tree index, no ilike needed.
+        '1865 BARTLETT' matches '1865 BARTLETT RD' because:
+          gte.'1865 BARTLETT' = True (equal prefix)
+          lt.'1865 BARTLETTU' = True ('1865 BARTLETT RD' < '1865 BARTLETTU')
+        """
+        query = query.strip().upper()
+        if not query or len(query) < 3:
             return None
+        # Sentinel: increment last char by 1 to get upper bound
+        sentinel = query[:-1] + chr(ord(query[-1]) + 1)
+        try:
+            # Use URL string directly to allow duplicate 'address' param key
+            # Supabase REST: ?address=gte.X&address=lt.Y for range query
+            from urllib.parse import quote
+            q_enc = quote(query, safe='')
+            s_enc = quote(sentinel, safe='')
+            url = (
+                f"{SUPABASE_URL}/rest/v1/memphis_addresses"
+                f"?address=gte.{q_enc}&address=lt.{s_enc}"
+                f"&select=lat%2Clng&limit=1&order=address"
+            )
+            r = requests.get(url, headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+            }, timeout=15)
+            r.raise_for_status()
+            rows = r.json()
+            if rows:
+                lat, lng = float(rows[0]["lat"]), float(rows[0]["lng"])
+                if in_city(lat, lng):
+                    return lat, lng
+        except Exception as e:
+            print(f"  [911 DB] Error on '{query}': {e}")
+        return None
 
-        # ── Intersection handling ──
-        if ' AND ' in clean:
-            parts = [p.strip() for p in clean.split(' AND ', 1)]
-            street1, street2 = parts[0], parts[1]
-            # Strip number prefix from intersection streets if present
-            street1_bare = re.sub(r'^\d+\s+', '', street1).strip()
-            street2_bare = re.sub(r'^\d+\s+', '', street2).strip()
-            # Verify BOTH streets exist in the 911 DB
-            s1_valid = street_exists(street1_bare)
-            s2_valid = street_exists(street2_bare)
-            if s1_valid and s2_valid:
-                # Both streets verified — use midpoint of first street's coords
-                coords = lookup_address(street1_bare) or lookup_address(street2_bare)
-                if coords:
-                    # Format display name as "Intersection: Street1 & Street2"
-                    s1_display = street1_bare.title()
-                    s2_display = street2_bare.title()
-                    intersection_label = f"Intersection: {s1_display} & {s2_display}"
-                    print(f"  Geocoded (911 DB intersection): {intersection_label} -> {coords}")
-                    return coords, intersection_label
-            elif s1_valid:
-                coords = lookup_address(street1_bare)
-                if coords:
-                    print(f"  Geocoded (911 DB): {street1_bare}* -> {coords}")
-                    return coords, None
-            elif s2_valid:
-                coords = lookup_address(street2_bare)
-                if coords:
-                    print(f"  Geocoded (911 DB): {street2_bare}* -> {coords}")
-                    return coords, None
-            # Neither street verified
-            print(f"  Location not verified — skipping: {location_text}")
-            return None, None
+    # Normalize input
+    normalized = location_text.strip().upper()
+    clean = re.sub(r'\s+(MEMPHIS|TN|TENNESSEE).*$', '', normalized).strip()
+    # Strip street type suffix — prefix search handles variants
+    clean = re.sub(
+        r'\s+(AVE|ST|RD|BLVD|DR|LN|WAY|CIR|CT|PL|PKWY|HWY|ROAD|'
+        r'AVENUE|STREET|DRIVE|LANE|CIRCLE|COURT|PLACE|PARKWAY|HIGHWAY)$',
+        '', clean
+    ).strip()
 
-        # ── Single address / street ──
-        queries = [clean]
-        stripped_dir = re.sub(r'^[NSEW]\s+', '', clean).strip()
-        if stripped_dir != clean:
-            queries.append(stripped_dir)
+    # ── Intersection handling ──
+    if ' AND ' in clean:
+        parts = [p.strip() for p in clean.split(' AND ', 1)]
+        street1_raw, street2_raw = parts[0], parts[1]
+        street1 = re.sub(r'^\d+\s+', '', street1_raw).strip()
+        street2 = re.sub(r'^\d+\s+', '', street2_raw).strip()
+        s1_bare = re.sub(r'^[NSEW]\s+', '', street1).strip()
+        s2_bare = re.sub(r'^[NSEW]\s+', '', street2).strip()
 
-        for query in queries:
-            coords = lookup_address(query)
-            if coords:
-                print(f"  Geocoded (911 DB): {query}* -> {coords}")
-                return coords, None
+        c1 = prefix_lookup(street1) or prefix_lookup(s1_bare)
+        c2 = prefix_lookup(street2) or prefix_lookup(s2_bare)
 
-    except Exception as e:
-        print(f"  911 DB error: {e}")
+        if c1 and c2:
+            label = f"Intersection: {street1.title()} & {street2.title()}"
+            print(f"  Geocoded (911 DB intersection): {label}")
+            return c1, label
+        elif c1:
+            print(f"  Geocoded (911 DB): {street1}* -> {c1}")
+            return c1, None
+        elif c2:
+            print(f"  Geocoded (911 DB): {street2}* -> {c2}")
+            return c2, None
+        print(f"  Location not verified — skipping: {location_text}")
+        return None, None
 
-    # Not found in 911 DB or landmarks — do not post
+    # ── Single address / street ──
+    queries = [clean]
+    stripped_dir = re.sub(r'^[NSEW]\s+', '', clean).strip()
+    if stripped_dir != clean:
+        queries.append(stripped_dir)
+
+    for query in queries:
+        coords = prefix_lookup(query)
+        if coords:
+            print(f"  Geocoded (911 DB): {query}* -> {coords}")
+            return coords, None
+
     print(f"  Location not verified — skipping: {location_text}")
     return None, None
 
-# ══════════════════════════════════════════════════════════════════
-#  AUDIO CAPTURE
-# ══════════════════════════════════════════════════════════════════
 
 def capture_chunk(stream_url, duration=CHUNK_SECONDS):
     response = requests.get(stream_url, stream=True, timeout=15)
