@@ -556,6 +556,34 @@ CAD_CORRECTIONS = {
     "delsten":         "Delsan Road",
     "gracewood":       "Gracewood Street",
     "denver":          "Denver Street",
+    # Whisper phonetic mishearings
+    "towel avenue":    "Lamar Avenue",
+    "towel ave":       "Lamar Avenue",
+    "barfield":        "Bartlett Road",
+    "ross road":       "Russ Road",
+    "winch":           "Winchester",
+    "poplar ave":      "Poplar Avenue",
+    "airways blvd":    "Airways Boulevard",
+    "democrat rd":     "Democrat Road",
+    "macon rd":        "Macon Road",
+    "summer ave":      "Summer Avenue",
+    "jackson ave":     "Jackson Avenue",
+    "union ave":       "Union Avenue",
+    "central ave":     "Central Avenue",
+    "highland ave":    "Highland Avenue",
+    "southern ave":    "Southern Avenue",
+    "chelsea ave":     "Chelsea Avenue",
+    "getwell":         "Getwell Road",
+    "get well":        "Getwell Road",
+    "quince":          "Quince Road",
+    "stage rd":        "Stage Road",
+    "raleigh lagrange":"Raleigh LaGrange Road",
+    "frayser blvd":    "Frayser Boulevard",
+    "watkins":         "Watkins Street",
+    "millbranch":      "Millbranch Road",
+    "tchulahoma":      "Tchulahoma Road",
+    "winchester":      "Winchester Road",
+    "lamar":           "Lamar Avenue",
 }
 
 def apply_cad_corrections(location_text):
@@ -1235,6 +1263,9 @@ LOCATION_PATTERNS = [
     r'(?:on|at|to|near)\s+([A-Z][a-z]{3,}(?:\s+[A-Z][a-z]{2,})?)',
     # Known Memphis landmarks
     r'\b(beale\s+street|elvis\s+presley|graceland|overton\s+park|shelby\s+farms|mud\s+island|fedex\s+forum|autozone\s+park|the\s+med|lebonheur|st\s+jude|union\s+avenue|poplar\s+avenue|summer\s+avenue|highland\s+avenue|airways\s+boulevard|lamar\s+avenue|winchester\s+road|covington\s+pike|stage\s+road|raleigh\s+lagrange|germantown\s+road|mendenhall\s+road|hickory\s+hill|american\s+way|brooks\s+road|horn\s+lake\s+road|elvis\s+presley\s+boulevard)\b',
+    # Bare street name with suffix — no preposition or number needed
+    # e.g. "Ross Road", "Lamar Avenue", "Watkins Street"
+    r'\b([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})?\s+(?:road|street|avenue|drive|lane|boulevard|way|circle|court|place|parkway))\b',
 ]
 
 # Unit extraction
@@ -1381,6 +1412,13 @@ def parse_incident(transcript_translated, city):
         "delta", "echo", "foxtrot", "tango", "victor", "whiskey",
         "in here", "out here", "up here", "down here", "over here",
         "the office", "the precinct", "the station",
+        # Common false extractions from garbled audio
+        "speak", "first row", "first", "second", "third", "fourth",
+        "accident", "alarm", "road", "avenue", "street", "drive",
+        "lane", "way", "court", "place", "alarm call", "scene call",
+        "nel poppery", "nell poppery", "river damage", "damage show",
+        "thank you", "order school", "the call", "the scene",
+        "towel avenue", "the road", "the street",
     ]
     if location.lower().strip() in BAD_LOCATIONS:
         return {"incident": False}
