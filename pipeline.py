@@ -50,6 +50,22 @@ CITIES = {
 }
 
 CHUNK_SECONDS            = 30
+
+# ── faster-whisper small model (Railway Pro CPU, zero API cost) ──
+_whisper_model = None
+
+def get_whisper_model():
+    global _whisper_model
+    if _whisper_model is None:
+        print("[Whisper] Loading faster-whisper small model...")
+        _whisper_model = WhisperModel(
+            "small",
+            device="cpu",
+            compute_type="int8",
+        )
+        print("[Whisper] Model ready")
+    return _whisper_model
+
 MAX_RETRIES              = 3
 FUGITIVE_REFRESH_SECONDS = 604800  # 7 days
 
