@@ -30,15 +30,14 @@ import json
 import tempfile
 import threading
 import requests
-from openai import OpenAI
 from datetime import datetime, timezone
 from bs4 import BeautifulSoup
+from faster_whisper import WhisperModel
 
 # ══════════════════════════════════════════════════════════════════
 #  CONFIG
 # ══════════════════════════════════════════════════════════════════
 
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 SUPABASE_URL   = os.environ.get("SUPABASE_URL",   "")
 SUPABASE_KEY   = os.environ.get("SUPABASE_KEY",   "")
 
@@ -55,7 +54,6 @@ MAX_RETRIES              = 3
 FUGITIVE_REFRESH_SECONDS = 604800  # 7 days
 
 # OpenAI client — used ONLY for Whisper transcription (not GPT)
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -1126,6 +1124,10 @@ def geocode_location(location_text, city):
             if data.get("status") == "OK":
                 loc = data["results"][0]["geometry"]["location"]
                 lat, lng = float(loc["lat"]), float(loc["lng"])
+                # Reject city center fallback (Google returns this when it can't find address)
+                if abs(lat - 35.1495) < 0.01 and abs(lng - (-90.0490)) < 0.01:
+                    print(f"  [Google] City center fallback rejected: {query}")
+                    return None
                 if in_memphis(lat, lng):
                     print(f"  Geocoded (Google): {query} -> {lat}, {lng}")
                     return lat, lng
@@ -1210,37 +1212,50 @@ def capture_chunk(stream_url, duration=CHUNK_SECONDS):
 
 
 # ══════════════════════════════════════════════════════════════════
-#  TRANSCRIPTION — OpenAI Whisper API
-#  ~$6/month running 24/7 — accurate scanner transcription
-#  Rule-based parser replaces GPT — zero GPT cost
+#  TRANSCRIPTION — faster-whisper small model (local CPU, zero cost)
+#  Runs on Railway Pro (8GB RAM). Small model: ~1.2GB RAM, ~15s/chunk
+#  Replaces OpenAI Whisper API — eliminates all transcription costs
 # ══════════════════════════════════════════════════════════════════
 
 def transcribe(audio_bytes):
+    tmp_path = None
     for attempt in range(MAX_RETRIES):
-        tmp_path = None
         try:
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
                 f.write(audio_bytes)
                 tmp_path = f.name
-            with open(tmp_path, "rb") as audio_file:
-                result = client.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=audio_file,
-                    language="en",
-                    prompt=(
-                        "Memphis Police Department scanner dispatch. "
-                        "Ten codes, unit numbers like 564 or WP-12, "
-                        "Memphis street addresses and intersections."
-                    )
-                )
-            text = result.text.strip()
+
+            model = get_whisper_model()
+            segments, info = model.transcribe(
+                tmp_path,
+                language="en",
+                beam_size=5,
+                best_of=5,
+                temperature=0.0,
+                vad_filter=True,
+                vad_parameters={
+                    "min_silence_duration_ms": 300,
+                    "threshold": 0.6,
+                    "min_speech_duration_ms": 200,
+                },
+                initial_prompt=(
+                    "Memphis Police Department scanner radio dispatch. "
+                    "Ten codes like 10-4, 10-71, 10-99. "
+                    "Unit numbers like 564, WP-12, 446 Bravo. "
+                    "Memphis street addresses and intersections."
+                ),
+            )
+            text = " ".join(s.text for s in segments).strip()
+
             if text:
+                # Reject repetitive hallucinations
                 words = text.lower().split()
                 if len(words) > 6:
                     unique_words = set(words)
                     if len(unique_words) / len(words) < 0.25:
-                        print(f"  [Whisper] Repetition detected — rejecting transcript")
+                        print(f"  [Whisper] Repetition detected — rejecting")
                         return ""
+                # Reject known Broadcastify ads / hallucinations
                 hallucination_markers = [
                     "buzzcutting his way to a small fortune",
                     "every time he cuts his own hair",
@@ -1252,9 +1267,10 @@ def transcribe(audio_bytes):
                     "all feels right in the world",
                 ]
                 if any(m in text.lower() for m in hallucination_markers):
-                    print(f"  [Whisper] Known hallucination — rejecting transcript")
+                    print(f"  [Whisper] Known hallucination — rejecting")
                     return ""
             return text
+
         except Exception as e:
             print(f"  Whisper attempt {attempt+1} failed: {e}")
             time.sleep(2)
@@ -1640,6 +1656,9 @@ def run_city(city):
 
     # Rolling buffer — keep previous chunk to catch dispatches that span two chunks
     prev_transcript = ""
+    # Deduplication — track last saved to prevent duplicate posts from rolling buffer
+    last_saved_key = ""
+    last_saved_time = 0
 
     while True:
         try:
@@ -1704,13 +1723,21 @@ def run_city(city):
             if is_dispatch:  print(f"  📡 Dispatcher call: {unit}")
             if gang_hotspot: print(f"  ⚠ Gang hotspot: {gang_zone}")
 
-            save_incident(
-                parsed, city,
-                transcript_raw, transcript_translated,
-                gang_hotspot, gang_zone, station, is_dispatch,
-            )
-            # Clear buffer after save — prevents bleed into next call
-            prev_transcript = ""
+            # Deduplication — skip if same location+priority saved in last 3 minutes
+            dedup_key = f"{parsed.get('location','')}|{priority}"
+            if dedup_key == last_saved_key and (time.time() - last_saved_time) < 180:
+                print(f"[{label}] Duplicate suppressed — same call saved recently")
+                prev_transcript = ""
+            else:
+                save_incident(
+                    parsed, city,
+                    transcript_raw, transcript_translated,
+                    gang_hotspot, gang_zone, station, is_dispatch,
+                )
+                last_saved_key = dedup_key
+                last_saved_time = time.time()
+                # Clear buffer after save — prevents bleed into next call
+                prev_transcript = ""
 
             tags = []
             if is_dispatch:  tags.append("📡 DISPATCH")
@@ -1761,10 +1788,12 @@ if __name__ == "__main__":
     # Install beautifulsoup4 if not present
     try:
         from bs4 import BeautifulSoup
+from faster_whisper import WhisperModel
     except ImportError:
         print("Installing beautifulsoup4...")
         os.system("pip install beautifulsoup4 --break-system-packages -q")
         from bs4 import BeautifulSoup
+from faster_whisper import WhisperModel
 
     threads = []
 
