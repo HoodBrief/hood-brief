@@ -1616,6 +1616,7 @@ def parse_incident(transcript_translated, city):
         # Direction words alone
         "north", "south", "east", "west",
         "1760 north", "302 south",
+        "6367 south", "572 south", "572 north", "572 east", "572 west",
     ]
     if location.lower().strip() in BAD_LOCATIONS:
         return {"incident": False}
@@ -1624,6 +1625,9 @@ def parse_incident(transcript_translated, city):
     if len(location.strip()) < 4:
         return {"incident": False}
     if re.match(r"^[\d\s\.\-]+$", location):
+        return {"incident": False}
+    # Reject bare "NUMBER DIRECTION" like "6367 South" or "572 North"
+    if re.match(r"^\d+\s+(North|South|East|West)$", location, re.I):
         return {"incident": False}
 
     return {
