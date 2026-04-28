@@ -1788,12 +1788,10 @@ if __name__ == "__main__":
     # Install beautifulsoup4 if not present
     try:
         from bs4 import BeautifulSoup
-from faster_whisper import WhisperModel
     except ImportError:
         print("Installing beautifulsoup4...")
         os.system("pip install beautifulsoup4 --break-system-packages -q")
         from bs4 import BeautifulSoup
-from faster_whisper import WhisperModel
 
     threads = []
 
