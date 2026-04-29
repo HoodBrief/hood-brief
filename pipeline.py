@@ -1042,6 +1042,9 @@ MEMPHIS_LANDMARKS = {
     "fleet street":          (35.1389, -90.0250),
     "chelsea avenue":        (35.1867, -89.9741),
     "east parkway":          (35.1389, -89.9741),
+    "kirby high school":     (35.0847, -89.8671),
+    "kirby parkway":         (35.0847, -89.8671),
+    "bellevue":              (35.1334, -90.0211),
     "poplar and east parkway": (35.1389, -89.9741),
 }
 
@@ -1892,3 +1895,4 @@ if __name__ == "__main__":
             print(status)
     except KeyboardInterrupt:
         print("\nShutting down.")
+                
