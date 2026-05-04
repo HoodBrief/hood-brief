@@ -1649,8 +1649,13 @@ def parse_incident(transcript_translated, city):
         "area", "scene", "vicinity", "neighborhood",
         # Unit designations that get extracted as addresses
         "bravo", "alpha", "charlie", "delta", "echo", "foxtrot",
-        "robo", "wpha", "check", "disregard", "negative",
+        "robo", "wpha", "wpsa", "check", "disregard", "negative",
         "information national", "raise dispatch",
+        # Phone/radio codes mistaken as addresses
+        "over the phone", "by phone", "via phone", "on the phone",
+        "over the radio", "by radio", "on scene", "on the scene",
+        "the phone", "phone", "radio", "dispatch",
+        "walk in", "walk-in", "complainant", "callback",
         # Interstate fragments
         "interstate 40 kids", "interstate 40 kids fighting",
         "kids fighting to st", "kids fighting",
@@ -1660,6 +1665,14 @@ def parse_incident(transcript_translated, city):
         "6367 south", "572 south", "572 north", "572 east", "572 west",
     ]
     if location.lower().strip() in BAD_LOCATIONS:
+        return {"incident": False}
+    # Reject locations containing phone/radio language
+    loc_lower = location.lower()
+    if any(phrase in loc_lower for phrase in [
+        "over the phone", "by phone", "via phone", "on the phone",
+        "over the radio", "walk in", "walk-in", "callback",
+        "over phone", "per phone",
+    ]):
         return {"incident": False}
 
     # Reject locations that are too short or just numbers
@@ -1895,4 +1908,3 @@ if __name__ == "__main__":
             print(status)
     except KeyboardInterrupt:
         print("\nShutting down.")
-                
