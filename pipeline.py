@@ -1582,12 +1582,17 @@ def parse_incident(transcript_translated, city):
         return {"incident": False}
 
     # Determine priority
+    priority = None
     if any(re.search(p, tl, re.I) for p in P1_PATTERNS):
         priority = "p1"
     elif any(re.search(p, tl, re.I) for p in MEDICAL_PATTERNS):
         priority = "medical"
     elif any(re.search(p, tl, re.I) for p in P2_PATTERNS):
         priority = "p2"
+
+    if priority is None:
+        print("  Routine call (P3) — skipping")
+        return {"incident": False}
 
     # Override: property crimes should never be Medical
     PROPERTY_OVERRIDES = ["shoplifting", "burglary", "larceny", "theft", "vandal",
