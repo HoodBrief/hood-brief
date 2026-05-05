@@ -1588,6 +1588,12 @@ def parse_incident(transcript_translated, city):
         priority = "medical"
     elif any(re.search(p, tl, re.I) for p in P2_PATTERNS):
         priority = "p2"
+
+    # Override: property crimes should never be Medical
+    PROPERTY_OVERRIDES = ["shoplifting", "burglary", "larceny", "theft", "vandal",
+                          "trespass", "stolen vehicle", "auto theft", "robbery"]
+    if priority == "medical" and any(k in tl for k in PROPERTY_OVERRIDES):
+        priority = "p1" if any(re.search(p, tl, re.I) for p in P1_PATTERNS) else "p2"
     else:
         print("  Routine call (P3) — skipping")
         return {"incident": False}
@@ -1685,6 +1691,12 @@ def parse_incident(transcript_translated, city):
         return {"incident": False}
     # Reject bare "NUMBER DIRECTION" like "6367 South" or "572 North"
     if re.match(r"^\d+\s+(North|South|East|West)$", location, re.I):
+        return {"incident": False}
+    # Reject vehicle year + make patterns like "2018 Dodge"
+    if re.match(r"^(19|20)\d{2}\s+\w+$", location, re.I):
+        return {"incident": False}
+    # Reject locations under 5 chars or that are just one word with no number
+    if re.match(r"^[A-Za-z]+$", location) and len(location) < 6:
         return {"incident": False}
 
     # Use priority as fallback title if no keyword matched
