@@ -1284,6 +1284,12 @@ def transcribe(audio_bytes):
                     "15-year-old harper", "vintage rock t-shirt",
                     "police scanner radio dispatch",
                     "all feels right in the world",
+                    # Broadcastify ads
+                    "capital one", "unlimited 2% cashback",
+                    "serious business", "cashback on all purchases",
+                    "earn unlimited", "venture card",
+                    "broadcastify premium", "try broadcastify",
+                    "subscribe to broadcastify",
                 ]
                 if any(m in text.lower() for m in hallucination_markers):
                     print(f"  [Whisper] Known hallucination — rejecting")
