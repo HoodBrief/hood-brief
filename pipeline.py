@@ -626,6 +626,9 @@ CAD_CORRECTIONS = {
     "stage road":      "Stage Road",
     "corning":         "Corning Avenue",
     "valentine":       "Vollintine Avenue",
+    "kisselia":        "Kessler Avenue",
+    "kissell":          "Kessler Avenue",
+    "kissalia":         "Kessler Avenue",
     "valentine ave":   "Vollintine Avenue",
     "parkhurst":       "Parkhurst Court",
     "cynthia":         "Cynthia Place",
@@ -1289,6 +1292,11 @@ def transcribe(audio_bytes):
                     "serious business", "cashback on all purchases",
                     "earn unlimited", "venture card",
                     "broadcastify premium", "try broadcastify",
+                    "summer is around the corner",
+                    "american military university",
+                    "large trucks need more time",
+                    "truck driver i've learned",
+                    "air conditioning seeping",
                     "subscribe to broadcastify",
                 ]
                 if any(m in text.lower() for m in hallucination_markers):
@@ -1359,6 +1367,9 @@ P2_PATTERNS = [
     r'\bvandalism\b', r'\btrespassing\b', r'\bstalking\b',
     r'\bbreaking\s+and\s+entering\b',
     r'\bwelfare\s+check\b', r'\bcheck\s+on\s+the\s+welfare\b',
+    r'\bprowler\b', r'\bpeeping\b',
+    r'\border\s+of\s+protection\b', r'\bprotective\s+order\b', r'\brestrain\w*\s+order\b',
+    r'\bOOP\b', r'\bTPO\b',
     r'\bcheck\s+welfare\b', r'\bcommercial\s+alarm\b',
     r'\bresidential\s+alarm\b', r'\bburglar\s+alarm\b',
     r'\bburglar\b', r'\bburglar\w*\b',
@@ -1392,6 +1403,8 @@ MEDICAL_PATTERNS = [
     r'\bptsd\b',
     r'\bsuicid\w+\b', r'\bsuicide\b',
     r'\bcpr\b',
+    r'\bCT\s+scan\b', r'\bnon-critical\b', r'\bnoncritical\b',
+    r'\binvestigators\s+to\s+hospital\b', r'\btrauma\b',
     r'\bopen\s+medic\b', r'\bmedic\s+door\b',
 ]
 
