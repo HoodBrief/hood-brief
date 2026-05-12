@@ -1852,7 +1852,7 @@ def run_city(city):
                 continue
 
             priority = parsed.get("priority", "")
-            if priority not in ("p1", "p2", "medical"):
+            if priority not in ("p1", "p2", "medical", "p3"):
                 print(f"[{label}] Skipping {priority.upper()} — below threshold")
                 continue
 
