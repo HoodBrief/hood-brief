@@ -1297,6 +1297,11 @@ def transcribe(audio_bytes):
                     "large trucks need more time",
                     "truck driver i've learned",
                     "air conditioning seeping",
+                    "non-profit hospital systems",
+                    "340b medicine",
+                    "luxury perks",
+                    "medicine markups",
+                    "stomachache and chestache",
                     "subscribe to broadcastify",
                 ]
                 if any(m in text.lower() for m in hallucination_markers):
@@ -1719,6 +1724,12 @@ def parse_incident(transcript_translated, city):
         "bravo", "alpha", "charlie", "delta", "echo", "foxtrot",
         "robo", "wpha", "wpsa", "check", "disregard", "negative",
         "information national", "raise dispatch",
+        # Phrase fragments that slip through
+        "transport the", "rate this", "hang you", "both fields",
+        "last known addresses", "last known", "numbers", "number",
+        "broadcast now", "broadcast", "units", "officers",
+        "the location", "this location", "that location",
+        "unknown location", "your location",
         # Phone/radio codes mistaken as addresses
         "over the phone", "by phone", "via phone", "on the phone",
         "over the radio", "by radio", "on scene", "on the scene",
@@ -1734,13 +1745,37 @@ def parse_incident(transcript_translated, city):
     ]
     if location.lower().strip() in BAD_LOCATIONS:
         return {"incident": False}
-    # Reject locations containing phone/radio language
+    # Reject locations containing phone/radio language or garbage phrases
     loc_lower = location.lower()
     if any(phrase in loc_lower for phrase in [
         "over the phone", "by phone", "via phone", "on the phone",
         "over the radio", "walk in", "walk-in", "callback",
         "over phone", "per phone",
+        "transport the", "rate this", "hang you", "both fields",
+        "last known addresses", "broadcast now", "72 last",
     ]):
+        return {"incident": False}
+
+    # Reject single-word locations (must have at least 2 words)
+    if len(location.strip().split()) < 2:
+        return {"incident": False}
+
+    # Reject locations that are just adjectives/verbs with no street indicator
+    # Must contain a number OR a known street suffix OR be a named place
+    has_number = bool(re.search(r"\d", location))
+    has_suffix = bool(re.search(
+        r"\b(ave|st|rd|blvd|dr|ln|way|cir|ct|pl|pkwy|hwy|road|street|avenue|drive|"
+        r"lane|boulevard|circle|court|place|parkway|highway|pike|cove|loop)\b",
+        location, re.I
+    ))
+    has_named = any(w in location.lower() for w in [
+        "poplar", "union", "main", "beale", "airways", "elvis presley",
+        "summer", "watkins", "chelsea", "highland", "central", "lamar",
+        "winchester", "stage", "thomas", "jackson", "madison", "monroe",
+        "intersection", "kroger", "walgreens", "walmart", "target",
+    ])
+    if not (has_number or has_suffix or has_named):
+        print(f"  Location rejected (no street indicators): {location}")
         return {"incident": False}
 
     # Reject locations that are too short or just numbers
