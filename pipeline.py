@@ -1647,8 +1647,7 @@ def parse_incident(transcript_translated, city):
         priority = "p2"
 
     if priority is None:
-        print("  Routine call (P3) — skipping")
-        return {"incident": False}
+        priority = "p3"  # Post all calls with verified addresses
 
     # Override: property crimes should never be Medical
     PROPERTY_OVERRIDES = ["shoplifting", "burglary", "larceny", "theft", "vandal",
@@ -1656,8 +1655,7 @@ def parse_incident(transcript_translated, city):
     if priority == "medical" and any(k in tl for k in PROPERTY_OVERRIDES):
         priority = "p1" if any(re.search(p, tl, re.I) for p in P1_PATTERNS) else "p2"
     else:
-        print("  Routine call (P3) — skipping")
-        return {"incident": False}
+        priority = "p3"
 
     # Require minimum transcript length for P1 — reduces false positives from
     # garbled audio that happens to contain a keyword like "armed" or "alarm"
