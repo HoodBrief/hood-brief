@@ -1659,8 +1659,6 @@ def parse_incident(transcript_translated, city):
                           "trespass", "stolen vehicle", "auto theft", "robbery"]
     if priority == "medical" and any(k in tl for k in PROPERTY_OVERRIDES):
         priority = "p1" if any(re.search(p, tl, re.I) for p in P1_PATTERNS) else "p2"
-    else:
-        priority = "p3"
 
     # Require minimum transcript length for P1 — reduces false positives from
     # garbled audio that happens to contain a keyword like "armed" or "alarm"
