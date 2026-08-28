@@ -1151,16 +1151,9 @@ def capture_chunk(stream_url, duration=CHUNK_SECONDS):
             "--hls-duration", str(duration),
             "--hls-live-restart",
             "--quiet",
+            stream_url,
+            "best",
         ]
-
-        # Add Broadcastify credentials if available
-        if BROADCASTIFY_USERNAME and BROADCASTIFY_PASSWORD:
-            cmd += [
-                "--broadcastify-username", BROADCASTIFY_USERNAME,
-                "--broadcastify-password", BROADCASTIFY_PASSWORD,
-            ]
-
-        cmd += [stream_url, "best"]
 
         result = subprocess.run(
             cmd,
