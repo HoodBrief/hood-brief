@@ -1172,16 +1172,28 @@ def get_broadcastify_stream_url(feed_id):
                 f"https://www.broadcastify.com/listen/feed/{feed_id}",
                 timeout=15,
             )
+            # Debug: dump relevant page snippets to find stream URL pattern
+            text = r.text
+            for keyword in ["m3u8", "stream", "hls", "cdnstream", "broadcastify.com/s"]:
+                idx = text.lower().find(keyword)
+                if idx != -1:
+                    print(f"  [Broadcastify DEBUG] Found '{keyword}' at {idx}: ...{text[max(0,idx-40):idx+80]}...")
+
             # m3u8 URL in page source
-            m = re.search(r'(https://[a-z0-9\-]+\.broadcastify\.com/[^\s"\']+\.m3u8[^\s"\']*)', r.text)
+            m = re.search(r'(https://[a-z0-9\-]+\.broadcastify\.com/[^\s"\']+\.m3u8[^\s"\']*)', text)
             if m:
                 print(f"  [Broadcastify] Fresh m3u8 URL scraped")
                 return m.group(1)
             # JS variable fallback
-            m = re.search(r'["\']?(stream(?:Url|URL|url))["\']?\s*[:=]\s*["\']([^"\']+)["\']', r.text)
+            m = re.search(r'["\']?(stream(?:Url|URL|url))["\']?\s*[:=]\s*["\']([^"\']+)["\']', text)
             if m:
                 print(f"  [Broadcastify] JS stream URL found")
                 return m.group(2)
+            # cdnstream fallback
+            m = re.search(r'(https://[^\s"\']+cdnstream[^\s"\']+)', text)
+            if m:
+                print(f"  [Broadcastify] cdnstream URL found")
+                return m.group(1)
             # Session may have expired — re-login once
             print("  [Broadcastify] URL not found in page — re-logging in")
             _bc_session = None
