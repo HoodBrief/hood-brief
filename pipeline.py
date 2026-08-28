@@ -1136,17 +1136,15 @@ MEMPHIS_FEED_ID       = "215"
 
 _bc_session = None
 
-def get_broadcastify_stream_url(feed_id):
-    """
-    Log in to Broadcastify and scrape a fresh HLS m3u8 URL.
-    Re-authenticates automatically if session expires.
-    """
+def _bc_login():
+    """Log in to Broadcastify and return an authenticated session."""
     global _bc_session
-
-    def login():
-        global _bc_session
-        s = requests.Session()
-        s.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
+    s = requests.Session()
+    s.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer":    "https://www.broadcastify.com/",
+    })
+    try:
         s.get("https://www.broadcastify.com/login/", timeout=10)
         resp = s.post(
             "https://www.broadcastify.com/login/",
@@ -1158,63 +1156,96 @@ def get_broadcastify_stream_url(feed_id):
             print("  [Broadcastify] Login successful")
             _bc_session = s
         else:
-            print("  [Broadcastify] Login failed — check BROADCASTIFY_USERNAME / BROADCASTIFY_PASSWORD")
+            print("  [Broadcastify] Login failed — check credentials")
             _bc_session = None
+    except Exception as e:
+        print(f"  [Broadcastify] Login error: {e}")
+        _bc_session = None
 
+
+def _bc_get_m3u8_url(feed_id):
+    """Scrape the HLS m3u8 URL + session token from the feed page."""
+    global _bc_session
     if not _bc_session:
-        login()
+        _bc_login()
     if not _bc_session:
         return None
 
-    for attempt in range(2):
-        try:
-            r = _bc_session.get(
-                f"https://www.broadcastify.com/listen/feed/{feed_id}",
-                timeout=15,
-            )
-            # Debug: dump relevant page snippets to find stream URL pattern
-            text = r.text
-            for keyword in ["m3u8", "stream", "hls", "cdnstream", "broadcastify.com/s"]:
-                idx = text.lower().find(keyword)
-                if idx != -1:
-                    print(f"  [Broadcastify DEBUG] Found '{keyword}' at {idx}: ...{text[max(0,idx-40):idx+80]}...")
+    try:
+        r = _bc_session.get(
+            f"https://www.broadcastify.com/listen/feed/{feed_id}",
+            timeout=15,
+        )
+        text = r.text
+        hls_m = re.search(r'hlsUrl\s*:\s*"((?:[^"\\]|\\.)+)"', text)
+        sid_m = re.search(r'sessionId\s*:\s*"([^"]+)"', text)
+        if hls_m:
+            url = hls_m.group(1).replace("\\/", "/")
+            if sid_m:
+                url = f"{url}?s={sid_m.group(1)}"
+            print(f"  [Broadcastify] m3u8 URL: {url}")
+            return url
+        print("  [Broadcastify] m3u8 URL not found in page — re-logging in")
+        _bc_session = None
+        _bc_login()
+        return None
+    except Exception as e:
+        print(f"  [Broadcastify] Scrape error: {e}")
+        _bc_session = None
+        return None
 
-            # m3u8 URL in page source (handles escaped slashes \/)
-            m = re.search(r'(https:\\/\\/[a-z0-9\-]+\\.broadcastify\\.com\\/[^\s"\']+\\.m3u8[^\s"\']*)', text)
-            if m:
-                url = m.group(1).replace("\\/", "/")
-                print(f"  [Broadcastify] Fresh m3u8 URL scraped")
-                return url
-            # hlsUrl + sessionId JS variables — combine into full authenticated URL
-            hls_m = re.search(r'hlsUrl\s*:\s*"((?:[^"\\]|\\.)+)"', text)
-            sid_m = re.search(r'sessionId\s*:\s*"([^"]+)"', text)
-            if hls_m:
-                url = hls_m.group(1).replace("\\/", "/")
-                if sid_m:
-                    url = f"{url}?s={sid_m.group(1)}"
-                print(f"  [Broadcastify] hlsUrl found: {url}")
-                return url, dict(_bc_session.cookies)
-            # JS variable fallback
-            m = re.search(r'["\']?(stream(?:Url|URL|url))["\']?\s*[:=]\s*["\']([^"\']+)["\']', text)
-            if m:
-                print(f"  [Broadcastify] JS stream URL found")
-                return m.group(2).replace("\\/", "/"), dict(_bc_session.cookies)
-            # cdnstream fallback
-            m = re.search(r'(https:\\/\\/[^\s"\']+cdnstream[^\s"\']+)', text)
-            if m:
-                print(f"  [Broadcastify] cdnstream URL found")
-                return m.group(1).replace("\\/", "/"), dict(_bc_session.cookies)
-            # Session may have expired — re-login once
-            print("  [Broadcastify] URL not found in page — re-logging in")
-            _bc_session = None
-            login()
-        except Exception as e:
-            print(f"  [Broadcastify] Scrape error: {e}")
-            _bc_session = None
-            login()
 
-    print("  [Broadcastify] Could not get stream URL after retry")
-    return None, None
+def capture_chunk_hls(m3u8_url, duration=CHUNK_SECONDS):
+    """
+    Pure-Python HLS downloader using the authenticated _bc_session.
+    Same session = same IP = no 403. Downloads TS segments for `duration`
+    seconds and concatenates them into raw MPEG-TS bytes.
+    """
+    global _bc_session
+    if not _bc_session:
+        return b""
+
+    try:
+        # Fetch the m3u8 playlist
+        r = _bc_session.get(m3u8_url, timeout=10)
+        r.raise_for_status()
+        playlist = r.text
+
+        # Parse segment URLs
+        base_url = m3u8_url.rsplit("/", 1)[0] + "/"
+        seg_urls = []
+        for line in playlist.splitlines():
+            line = line.strip()
+            if line and not line.startswith("#"):
+                seg_urls.append(line if line.startswith("http") else base_url + line)
+
+        if not seg_urls:
+            print("  [HLS] No segments in playlist")
+            return b""
+
+        # Download segments for `duration` seconds
+        audio_data = b""
+        start = time.time()
+        downloaded = 0
+        for url in seg_urls:
+            if time.time() - start >= duration:
+                break
+            try:
+                seg = _bc_session.get(url, timeout=10)
+                seg.raise_for_status()
+                audio_data += seg.content
+                downloaded += 1
+            except Exception as e:
+                print(f"  [HLS] Segment error: {e}")
+                continue
+
+        print(f"  [HLS] Downloaded {downloaded} segments ({len(audio_data)} bytes)")
+        return audio_data
+
+    except Exception as e:
+        print(f"  [HLS] Error: {e}")
+        _bc_session = None
+        return b""
 
 
 def capture_chunk(stream_url, duration=CHUNK_SECONDS, cookies=None):
@@ -1837,19 +1868,15 @@ def run_city(city):
     while True:
         try:
             # Fetch a fresh m3u8 URL each loop — tokens expire every ~30 min
-            bc_cookies = None
             if city == "memphis":
-                result = get_broadcastify_stream_url(MEMPHIS_FEED_ID)
-                active_url, bc_cookies = result if result[0] else (stream_url, None)
+                m3u8_url = _bc_get_m3u8_url(MEMPHIS_FEED_ID)
+                if not m3u8_url:
+                    print(f"[{label}] No stream URL — retrying in 30s")
+                    time.sleep(30)
+                    continue
+                audio = capture_chunk_hls(m3u8_url, CHUNK_SECONDS)
             else:
-                active_url = stream_url
-
-            if not active_url:
-                print(f"[{label}] No stream URL — retrying in 30s")
-                time.sleep(30)
-                continue
-
-            audio = capture_chunk(active_url, CHUNK_SECONDS, cookies=bc_cookies)
+                audio = capture_chunk(stream_url, CHUNK_SECONDS)
             if len(audio) < 1000:
                 print(f"[{label}] Audio chunk too small — retrying in 10s")
                 time.sleep(10)
