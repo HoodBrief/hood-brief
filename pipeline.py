@@ -1179,21 +1179,28 @@ def get_broadcastify_stream_url(feed_id):
                 if idx != -1:
                     print(f"  [Broadcastify DEBUG] Found '{keyword}' at {idx}: ...{text[max(0,idx-40):idx+80]}...")
 
-            # m3u8 URL in page source
-            m = re.search(r'(https://[a-z0-9\-]+\.broadcastify\.com/[^\s"\']+\.m3u8[^\s"\']*)', text)
+            # m3u8 URL in page source (handles escaped slashes \/)
+            m = re.search(r'(https:\\/\\/[a-z0-9\-]+\\.broadcastify\\.com\\/[^\s"\']+\\.m3u8[^\s"\']*)', text)
             if m:
+                url = m.group(1).replace("\\/", "/")
                 print(f"  [Broadcastify] Fresh m3u8 URL scraped")
-                return m.group(1)
+                return url
+            # hlsUrl JS variable
+            m = re.search(r'hlsUrl\s*:\s*"((?:[^"\\]|\\.)+)"', text)
+            if m:
+                url = m.group(1).replace("\\/", "/")
+                print(f"  [Broadcastify] hlsUrl found")
+                return url
             # JS variable fallback
             m = re.search(r'["\']?(stream(?:Url|URL|url))["\']?\s*[:=]\s*["\']([^"\']+)["\']', text)
             if m:
                 print(f"  [Broadcastify] JS stream URL found")
-                return m.group(2)
+                return m.group(2).replace("\\/", "/")
             # cdnstream fallback
-            m = re.search(r'(https://[^\s"\']+cdnstream[^\s"\']+)', text)
+            m = re.search(r'(https:\\/\\/[^\s"\']+cdnstream[^\s"\']+)', text)
             if m:
                 print(f"  [Broadcastify] cdnstream URL found")
-                return m.group(1)
+                return m.group(1).replace("\\/", "/")
             # Session may have expired — re-login once
             print("  [Broadcastify] URL not found in page — re-logging in")
             _bc_session = None
