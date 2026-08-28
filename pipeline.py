@@ -267,20 +267,24 @@ HEATMAP_STATIC_POINTS = [
 ]
 
 def load_heatmap():
+    """Load static heatmap points once, then sleep forever so thread stays alive."""
     print("[Heatmap] Checking heatmap_points table...")
     try:
         existing = sb_get("heatmap_points", params={"select": "id", "limit": 1})
         if existing and len(existing) > 0:
             print(f"[Heatmap] Table already populated — skipping reload")
-            return
-        inserted = 0
-        for i in range(0, len(HEATMAP_STATIC_POINTS), 500):
-            batch = HEATMAP_STATIC_POINTS[i:i+500]
-            sb_post("heatmap_points", batch)
-            inserted += len(batch)
-        print(f"[Heatmap] ✅ Loaded {inserted} P1 points into Supabase")
+        else:
+            inserted = 0
+            for i in range(0, len(HEATMAP_STATIC_POINTS), 500):
+                batch = HEATMAP_STATIC_POINTS[i:i+500]
+                sb_post("heatmap_points", batch)
+                inserted += len(batch)
+            print(f"[Heatmap] ✅ Loaded {inserted} P1 points into Supabase")
     except Exception as e:
         print(f"[Heatmap] Error: {e}")
+    # Stay alive so heartbeat doesn't show DEAD
+    while True:
+        time.sleep(3600)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -578,6 +582,8 @@ CAD_CORRECTIONS = {
     "parkhurst":       "Parkhurst Court",
     "cynthia":         "Cynthia Place",
     "haven":           "Haven Court",
+    "spotswood":       "Spottswood Avenue",
+    "spottswood":      "Spottswood Avenue",
 }
 
 def apply_cad_corrections(location_text):
@@ -1777,6 +1783,10 @@ def parse_incident(transcript_translated, city):
         "over phone", "per phone",
         "transport the", "rate this", "hang you", "both fields",
         "last known addresses", "broadcast now", "72 last",
+        "entrance in", "entrance at", "entrance on",
+        " car", "23 car", "21 car",
+        "victor delta", "victor alpha", "victor bravo",
+        "paraby", "disregard",
     ]):
         return {"incident": False}
 
