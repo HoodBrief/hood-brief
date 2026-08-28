@@ -1814,7 +1814,12 @@ def run_city(city):
 # ══════════════════════════════════════════════════════════════════
 #  ENTRY POINT
 # ══════════════════════════════════════════════════════════════════
-
+if __name__ == "__main__":
+    # Ensure ffmpeg is available
+    import shutil
+    if not shutil.which("ffmpeg"):
+        print("[Setup] Installing ffmpeg...")
+        os.system("apt-get update -qq && apt-get install -y ffmpeg -qq")
 if __name__ == "__main__":
     print("╔══════════════════════════════════════════╗")
     print("║  Hood Brief — Pipeline Starting          ║")
