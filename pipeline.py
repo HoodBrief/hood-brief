@@ -1189,7 +1189,7 @@ def get_broadcastify_stream_url(feed_id):
             m = re.search(r'hlsUrl\s*:\s*"((?:[^"\\]|\\.)+)"', text)
             if m:
                 url = m.group(1).replace("\\/", "/")
-                print(f"  [Broadcastify] hlsUrl found")
+                print(f"  [Broadcastify] hlsUrl found: {url}")
                 return url
             # JS variable fallback
             m = re.search(r'["\']?(stream(?:Url|URL|url))["\']?\s*[:=]\s*["\']([^"\']+)["\']', text)
