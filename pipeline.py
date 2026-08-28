@@ -1935,17 +1935,18 @@ def run_city(city):
 
             dedup_key = f"{parsed.get('location','')}|{priority}"
             if dedup_key == last_saved_key and (time.time() - last_saved_time) < 180:
-                print(f"[{label}] Duplicate suppressed — same call saved recently")
+                print(f"[{label}] Duplicate suppressed — skipping")
                 prev_transcript = ""
-            else:
-                save_incident(
-                    parsed, city,
-                    transcript_raw, transcript_translated,
-                    gang_hotspot, gang_zone, station, is_dispatch,
-                )
-                last_saved_key = dedup_key
-                last_saved_time = time.time()
-                prev_transcript = ""
+                continue
+
+            save_incident(
+                parsed, city,
+                transcript_raw, transcript_translated,
+                gang_hotspot, gang_zone, station, is_dispatch,
+            )
+            last_saved_key = dedup_key
+            last_saved_time = time.time()
+            prev_transcript = ""
 
             tags = []
             if is_dispatch:  tags.append("📡 DISPATCH")
