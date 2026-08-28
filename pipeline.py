@@ -29,6 +29,7 @@ import time
 import json
 import tempfile
 import threading
+import subprocess
 import requests
 from datetime import datetime, timezone
 from bs4 import BeautifulSoup
@@ -69,9 +70,6 @@ def get_whisper_model():
 MAX_RETRIES              = 3
 FUGITIVE_REFRESH_SECONDS = 604800  # 7 days
 
-# OpenAI client — used ONLY for Whisper transcription (not GPT)
-
-
 # ══════════════════════════════════════════════════════════════════
 #  SUPABASE HELPERS
 # ══════════════════════════════════════════════════════════════════
@@ -85,11 +83,6 @@ def sb_headers():
     }
 
 def sb_get(path, params=None):
-    """
-    Supabase REST GET with special handling for ilike wildcard (*).
-    requests encodes * as %2A which breaks Supabase pattern matching.
-    We build the URL manually to preserve * in filter values.
-    """
     base_url = f"{SUPABASE_URL}/rest/v1/{path}"
     headers = {
         "apikey":        SUPABASE_KEY,
@@ -100,13 +93,11 @@ def sb_get(path, params=None):
         r.raise_for_status()
         return r.json()
 
-    # Build query string manually to prevent * from being encoded as %2A
     from urllib.parse import quote
     parts = []
     for k, v in params.items():
-        # Encode key and value but preserve * for ilike patterns
         encoded_k = quote(str(k), safe='')
-        encoded_v = quote(str(v), safe='*')  # safe='*' keeps * unencoded
+        encoded_v = quote(str(v), safe='*')
         parts.append(f"{encoded_k}={encoded_v}")
     query_string = "&".join(parts)
     url = f"{base_url}?{query_string}"
@@ -137,9 +128,6 @@ def sb_delete(path):
 
 # ══════════════════════════════════════════════════════════════════
 #  HEATMAP — STATIC P1 POINTS
-#  Source: MPD Public Safety Incidents GeoJSON (April 2026)
-#  Loaded once at startup into Supabase heatmap_points table
-#  (Live API at data.memphistn.gov is not accessible from Railway)
 # ══════════════════════════════════════════════════════════════════
 
 HEATMAP_STATIC_POINTS = [
@@ -279,14 +267,12 @@ HEATMAP_STATIC_POINTS = [
 ]
 
 def load_heatmap():
-    """Load static P1 heatmap points into Supabase on startup — only if empty."""
     print("[Heatmap] Checking heatmap_points table...")
     try:
         existing = sb_get("heatmap_points", params={"select": "id", "limit": 1})
         if existing and len(existing) > 0:
             print(f"[Heatmap] Table already populated — skipping reload")
             return
-        # Insert all points
         inserted = 0
         for i in range(0, len(HEATMAP_STATIC_POINTS), 500):
             batch = HEATMAP_STATIC_POINTS[i:i+500]
@@ -299,32 +285,20 @@ def load_heatmap():
 
 # ══════════════════════════════════════════════════════════════════
 #  FUGITIVE SCRAPER
-#  Scrapes memphismostwanted.org weekly
-#  Geocodes last known addresses and saves to Supabase fugitives table
 # ══════════════════════════════════════════════════════════════════
 
 CRIMESTOPPERS_URL = "https://www.memphismostwanted.org/"
 
 def geocode_fugitive_address(address_text):
-    """
-    Geocode a fugitive's last known address.
-    Tries 911 DB first, then Google, then Nominatim.
-    Fugitives use Google as fallback since addresses come from warrant listings.
-    Returns (lat, lng) or None if not found or outside region.
-    """
     if not address_text or "unknown" in address_text.lower() or "at large" in address_text.lower():
         return None
 
-    # Normalize — extract just the street address part before city/state
-    # e.g. "1234 Main St in Memphis, TN 38103" -> "1234 Main St"
     clean = re.sub(r'\s+in\s+.+$', '', address_text, flags=re.IGNORECASE).strip()
     clean_upper = clean.upper()
 
     def in_region(lat, lng):
-        # Accept Memphis and surrounding Shelby County area
         return 34.9 <= lat <= 35.4 and -90.3 <= lng <= -89.6
 
-    # Step 1: 911 database
     try:
         rows = sb_get(
             "memphis_addresses",
@@ -338,7 +312,6 @@ def geocode_fugitive_address(address_text):
     except Exception as e:
         print(f"  [Fugitive] 911 DB error: {e}")
 
-    # Step 2: Google Geocoding
     google_key = os.environ.get("GOOGLE_MAPS_KEY", "")
     if google_key:
         try:
@@ -357,7 +330,6 @@ def geocode_fugitive_address(address_text):
         except Exception as e:
             print(f"  [Fugitive] Google error: {e}")
 
-    # Step 3: Nominatim
     try:
         time.sleep(1)
         r = requests.get(
@@ -380,18 +352,10 @@ def geocode_fugitive_address(address_text):
 
 
 def parse_fugitive_post(post_html):
-    """
-    Parse a single CrimeStoppers weekly post and extract fugitive records.
-    Returns list of dicts with name, dob, charges, address, photo_url, warrant_num.
-    """
     fugitives = []
     soup = BeautifulSoup(post_html, "html.parser")
-
-    # Each fugitive is separated by <hr> tags
-    # Structure: img -> bold name, DOB line, Wanted for line, Last Known Address line, Warrant line
     content = soup.find("div", class_="entry-content") or soup
 
-    # Split on <hr> tags to get individual fugitive blocks
     blocks = []
     current = []
     for elem in content.children:
@@ -412,35 +376,29 @@ def parse_fugitive_post(post_html):
             )
             text = block_soup.get_text(" ", strip=True)
 
-            # Extract photo URL
             img = block_soup.find("img")
             photo_url = img.get("src", "") if img else ""
 
-            # Extract name — first bold text
             bold = block_soup.find("strong")
             name = bold.get_text(strip=True) if bold else ""
             if not name:
                 continue
 
-            # Extract DOB
             dob_match = re.search(r'DOB[:\s]+(\d{2}/\d{2}/\d{4})', text)
             dob = dob_match.group(1) if dob_match else ""
 
-            # Extract charges — "Wanted for X" section
             charges_match = re.search(
                 r'Wanted for\s+(.+?)(?:Last Known Address|Warrant)', text,
                 re.IGNORECASE | re.DOTALL
             )
             charges = charges_match.group(1).strip().rstrip(',') if charges_match else ""
 
-            # Extract last known address
             addr_match = re.search(
                 r'Last Known Address[:\s]+(.+?)(?:Warrant|$)', text,
                 re.IGNORECASE | re.DOTALL
             )
             address = addr_match.group(1).strip() if addr_match else ""
 
-            # Extract warrant number
             warrant_match = re.search(r'Warrant\s*#?\s*(\d+)', text, re.IGNORECASE)
             warrant_num = warrant_match.group(1) if warrant_match else ""
 
@@ -461,10 +419,6 @@ def parse_fugitive_post(post_html):
 
 
 def scrape_fugitives():
-    """
-    Scrape CrimeStoppers Most Wanted, geocode addresses,
-    and update the Supabase fugitives table.
-    """
     print("[Fugitives] Starting weekly scrape from memphismostwanted.org...")
     try:
         r = requests.get(
@@ -475,14 +429,12 @@ def scrape_fugitives():
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
 
-        # Find all weekly posts
         posts = soup.find_all("article") or soup.find_all("div", class_="post")
         if not posts:
-            # Fallback: parse whole page
             posts = [soup]
 
         all_fugitives = []
-        for post in posts[:4]:  # Only last 4 weeks
+        for post in posts[:4]:
             post_html = str(post)
             found = parse_fugitive_post(post_html)
             all_fugitives.extend(found)
@@ -494,7 +446,6 @@ def scrape_fugitives():
             print("[Fugitives] No fugitives parsed — skipping update")
             return
 
-        # Geocode each fugitive address
         records = []
         for f in all_fugitives:
             coords = geocode_fugitive_address(f["address"])
@@ -515,12 +466,10 @@ def scrape_fugitives():
         geocoded = sum(1 for r in records if r["lat"] is not None)
         print(f"[Fugitives] Geocoded {geocoded}/{len(records)} addresses")
 
-        # Clear old records and insert fresh batch
         sb_delete(
             "fugitives?id=neq.00000000-0000-0000-0000-000000000000"
         )
 
-        # Insert in batches
         for i in range(0, len(records), 100):
             batch = records[i:i+100]
             sb_post("fugitives", batch)
@@ -535,7 +484,6 @@ def scrape_fugitives():
 
 
 def fugitive_scrape_loop():
-    """Scrape fugitives at startup then every 7 days."""
     while True:
         scrape_fugitives()
         time.sleep(FUGITIVE_REFRESH_SECONDS)
@@ -543,7 +491,6 @@ def fugitive_scrape_loop():
 
 # ══════════════════════════════════════════════════════════════════
 #  CAD STREET NAME CORRECTIONS
-#  Source: Shelby County 911 NG911 GeoDatabase — ROAD layer
 # ══════════════════════════════════════════════════════════════════
 
 CAD_CORRECTIONS = {
@@ -566,7 +513,6 @@ CAD_CORRECTIONS = {
     "green creek":     "Green",
     "glenn rogers sr": "Glenn Rogers Senior",
     "channel 3":       "Channel Three",
-    # Common Whisper mishearings of Memphis streets
     "shadywell":       "Shadywell Lane",
     "shady well":      "Shadywell Lane",
     "kimberville":     "Kimberley Street",
@@ -576,7 +522,6 @@ CAD_CORRECTIONS = {
     "delsten":         "Delsan Road",
     "gracewood":       "Gracewood Street",
     "denver":          "Denver Street",
-    # Whisper phonetic mishearings
     "towel avenue":    "Lamar Avenue",
     "towel ave":       "Lamar Avenue",
     "barfield":        "Bartlett Road",
@@ -643,32 +588,26 @@ def apply_cad_corrections(location_text):
         pattern = rf'\b{re.escape(cad)}\b'
         result = re.sub(pattern, official, result, flags=re.IGNORECASE)
     return result
+
+
 # ══════════════════════════════════════════════════════════════════
 #  INCIDENT KEYWORD PRE-FILTER
-#  Screens transcripts before sending to GPT to reduce API costs
-#  Only transcripts containing at least one keyword reach GPT
 # ══════════════════════════════════════════════════════════════════
 
 INCIDENT_KEYWORDS = [
-    # Violent crimes
     "shooting", "shot", "shots fired", "gun", "armed", "weapon",
     "robbery", "robber", "rob", "assault", "assaulting", "fight",
     "stabbing", "stab", "knife", "homicide", "murder", "body",
     "kidnap", "hostage", "rape", "sexual",
-    # Officer safety
     "officer needs help", "need assistance", "need backup", "backup",
     "pursuit", "chase", "fleeing", "foot chase", "vehicle pursuit",
     "person with a gun", "person with a weapon", "suspect",
-    # Dispatch language
     "respond", "responding", "en route", "on scene", "units",
     "dispatch", "dispatching", "priority", "code",
-    # Medical
     "medical", "ambulance", "ems", "unconscious", "unresponsive",
     "overdose", "cardiac", "breathing", "not breathing", "injured",
-    # Property crimes worth logging
     "burglary", "breaking", "domestic", "disturbance",
     "accident", "collision", "crash", "vehicle",
-    # Translated 10-codes that indicate incidents
     "use caution", "crime in progress", "person with a gun",
     "shooting", "stabbing", "pursuit in progress",
     "officer needs help", "need assistance", "ambulance request",
@@ -676,14 +615,8 @@ INCIDENT_KEYWORDS = [
 ]
 
 def has_incident_keywords(text):
-    """
-    Returns True if the transcript contains at least one incident keyword.
-    Case-insensitive. Prevents sending routine radio chatter to GPT.
-    """
     text_lower = text.lower()
     return any(kw in text_lower for kw in INCIDENT_KEYWORDS)
-
-
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -960,8 +893,6 @@ def translate_ten_codes(transcript, city):
     for code, meaning in sorted_codes:
         num = code.replace("10-", "").replace("10 ", "")
         patterns = [
-            # Require dash or space between "10" and the number
-            # This prevents "1046" from matching "10-46"
             rf"\b10[-\s]{re.escape(num)}\b",
             rf"\bten[-\s]{re.escape(num)}\b",
         ]
@@ -1007,7 +938,6 @@ MEMPHIS_LANDMARKS = {
     "pink palace":           (35.1189, -89.9503),
     "stax museum":           (35.1083, -90.0187),
     "national civil rights": (35.1346, -90.0587),
-    # Memphis Schools
     "whitney elementary":    (35.2074, -90.0233),
     "whitehaven high":       (35.0281, -90.0187),
     "whitehaven high school": (35.0281, -90.0187),
@@ -1018,8 +948,6 @@ MEMPHIS_LANDMARKS = {
     "white station high":    (35.1283, -89.8912),
     "craigmont high":        (35.2018, -89.9741),
     "ridgeway high":         (35.0847, -89.8241),
-    "southland mall":        (35.0281, -90.0187),
-    # Hospitals / Medical
     "regional one":          (35.1389, -90.0367),
     "baptist memorial":      (35.1503, -90.0367),
     "methodist le bonheur":  (35.1503, -90.0367),
@@ -1027,7 +955,6 @@ MEMPHIS_LANDMARKS = {
     "lakeside hospital":     (35.1867, -89.8912),
     "veterans affairs":      (35.1503, -89.9387),
     "va hospital":           (35.1503, -89.9387),
-    # Common dispatch locations
     "201 poplar":            (35.1468, -90.0512),
     "union mission":         (35.1468, -90.0512),
     "shelby county jail":    (35.1468, -90.0512),
@@ -1035,8 +962,6 @@ MEMPHIS_LANDMARKS = {
     "elvis presley trauma":  (35.1389, -90.0367),
     "trauma center":         (35.1389, -90.0367),
     "waldron":               (35.1389, -90.0367),
-    "medical district apart": (35.1389, -90.0367),
-    "cooper young":          (35.1175, -89.9837),
     "new brunswick":         (35.2013, -89.7812),
     "kroger":                (35.1295, -89.9477),
     "bojangles":             (35.1760, -89.8809),
@@ -1067,19 +992,11 @@ def check_landmark(location_text):
 # ══════════════════════════════════════════════════════════════════
 
 def geocode_location(location_text, city):
-    """
-    Tiered geocoding — posts if location is verifiable by any method:
-    1. Landmark lookup (hardcoded Memphis locations)
-    2. Shelby County 911 address database (256,684 verified addresses)
-    3. Google Geocoding API (fallback — only accepts results within Memphis bounds)
-    Returns ((lat, lng), display_label) or (None, None) if unverifiable.
-    """
     if not location_text:
         return None, None
 
     location_text = apply_cad_corrections(location_text)
 
-    # Step 0: Landmark lookup
     landmark = check_landmark(location_text)
     if landmark:
         return landmark, None
@@ -1087,19 +1004,13 @@ def geocode_location(location_text, city):
     city_info  = CITIES[city]
     google_key = os.environ.get("GOOGLE_MAPS_KEY", "")
 
-    # Memphis bounds — reject any geocode result outside this box
     def in_memphis(lat, lng):
         return 34.9 <= lat <= 35.5 and -90.4 <= lng <= -89.6
 
     def prefix_lookup(query):
-        """
-        Range-based prefix search using gte/lt operators.
-        '1865 BARTLETT' matches '1865 BARTLETT RD' in the DB.
-        """
         query = query.strip().upper()
         if not query or len(query) < 3:
             return None
-        # Normalize direction words to match 911 DB format (N/S/E/W)
         query = re.sub(r'\bNORTH\b', 'N', query)
         query = re.sub(r'\bSOUTH\b', 'S', query)
         query = re.sub(r'\bEAST\b',  'E', query)
@@ -1130,7 +1041,6 @@ def geocode_location(location_text, city):
         return None
 
     def google_geocode(query):
-        """Google Geocoding fallback — only accepts results within Memphis bounds."""
         if not google_key:
             print(f"  [Google] GOOGLE_MAPS_KEY not set — skipping fallback")
             return None
@@ -1146,7 +1056,6 @@ def geocode_location(location_text, city):
             if data.get("status") == "OK":
                 loc = data["results"][0]["geometry"]["location"]
                 lat, lng = float(loc["lat"]), float(loc["lng"])
-                # Reject city center fallback (Google returns this when it can't find address)
                 if abs(lat - 35.1495) < 0.01 and abs(lng - (-90.0490)) < 0.01:
                     print(f"  [Google] City center fallback rejected: {query}")
                     return None
@@ -1159,7 +1068,6 @@ def geocode_location(location_text, city):
             print(f"  [Google] Error on '{query}': {e}")
         return None
 
-    # Normalize input — strip suffix for prefix matching
     normalized = location_text.strip().upper()
     clean = re.sub(r'\s+(MEMPHIS|TN|TENNESSEE).*$', '', normalized).strip()
     clean = re.sub(
@@ -1168,7 +1076,6 @@ def geocode_location(location_text, city):
         '', clean
     ).strip()
 
-    # ── Intersection handling ──
     if ' AND ' in clean:
         parts = [p.strip() for p in clean.split(' AND ', 1)]
         street1_raw, street2_raw = parts[0], parts[1]
@@ -1191,7 +1098,6 @@ def geocode_location(location_text, city):
             print(f"  Geocoded (911 DB): {street2}")
             return c2, None
 
-        # Google fallback for intersection
         coords = google_geocode(location_text)
         if coords:
             return coords, None
@@ -1199,7 +1105,6 @@ def geocode_location(location_text, city):
         print(f"  Location not verified — skipping: {location_text}")
         return None, None
 
-    # ── Single address / street ──
     queries = [clean]
     stripped_dir = re.sub(r'^[NSEW]\s+', '', clean).strip()
     if stripped_dir != clean:
@@ -1211,7 +1116,6 @@ def geocode_location(location_text, city):
             print(f"  Geocoded (911 DB): {query}")
             return coords, None
 
-    # Google fallback for single address
     coords = google_geocode(location_text)
     if coords:
         return coords, None
@@ -1220,23 +1124,53 @@ def geocode_location(location_text, city):
     return None, None
 
 
-def capture_chunk(stream_url, duration=CHUNK_SECONDS):
-    response = requests.get(stream_url, stream=True, timeout=15)
-    response.raise_for_status()
-    audio_data = b""
-    start = time.time()
-    for chunk in response.iter_content(chunk_size=4096):
-        audio_data += chunk
-        if time.time() - start >= duration:
-            break
-    return audio_data
+# ══════════════════════════════════════════════════════════════════
+#  AUDIO CAPTURE — ffmpeg (supports MP3 streams AND HLS m3u8)
+# ══════════════════════════════════════════════════════════════════
 
+def capture_chunk(stream_url, duration=CHUNK_SECONDS):
+    """Capture audio chunk using ffmpeg — supports both MP3 streams and HLS m3u8."""
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+            tmp_path = f.name
+
+        subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-i", stream_url,
+                "-t", str(duration),
+                "-acodec", "libmp3lame",
+                "-ar", "16000",
+                "-ac", "1",
+                "-q:a", "4",
+                tmp_path,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=duration + 30,
+        )
+        with open(tmp_path, "rb") as f:
+            return f.read()
+    except subprocess.TimeoutExpired:
+        print("  [ffmpeg] Timeout — stream may be stalled")
+        return b""
+    except FileNotFoundError:
+        print("  [ffmpeg] ffmpeg not found — install it in your Railway Dockerfile or nixpacks config")
+        return b""
+    except Exception as e:
+        print(f"  [ffmpeg] Error: {e}")
+        return b""
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except:
+                pass
 
 
 # ══════════════════════════════════════════════════════════════════
-#  TRANSCRIPTION — faster-whisper small model (local CPU, zero cost)
-#  Runs on Railway Pro (8GB RAM). Small model: ~1.2GB RAM, ~15s/chunk
-#  Replaces OpenAI Whisper API — eliminates all transcription costs
+#  TRANSCRIPTION — faster-whisper small model
 # ══════════════════════════════════════════════════════════════════
 
 def transcribe(audio_bytes):
@@ -1270,14 +1204,12 @@ def transcribe(audio_bytes):
             text = " ".join(s.text for s in segments).strip()
 
             if text:
-                # Reject repetitive hallucinations
                 words = text.lower().split()
                 if len(words) > 6:
                     unique_words = set(words)
                     if len(unique_words) / len(words) < 0.25:
                         print(f"  [Whisper] Repetition detected — rejecting")
                         return ""
-                # Reject known Broadcastify ads / hallucinations
                 hallucination_markers = [
                     "buzzcutting his way to a small fortune",
                     "every time he cuts his own hair",
@@ -1287,7 +1219,6 @@ def transcribe(audio_bytes):
                     "15-year-old harper", "vintage rock t-shirt",
                     "police scanner radio dispatch",
                     "all feels right in the world",
-                    # Broadcastify ads
                     "capital one", "unlimited 2% cashback",
                     "serious business", "cashback on all purchases",
                     "earn unlimited", "venture card",
@@ -1318,14 +1249,11 @@ def transcribe(audio_bytes):
                 except: pass
     return ""
 
+
 # ══════════════════════════════════════════════════════════════════
 #  RULE-BASED INCIDENT PARSER
-#  Zero API cost — regex + keyword matching
-#  Works on translated transcripts (10-codes already converted)
-#  Handles real scanner patterns: priority, location, unit extraction
 # ══════════════════════════════════════════════════════════════════
 
-# Priority 1 — violent, weapons, pursuit, officer needs help
 P1_PATTERNS = [
     r'\bpriority\s*one\b', r'\bpriority\s*1\b', r'\bp[\-\s]?1\b',
     r'\bshooting\b', r'\bshots?\s+fired\b', r'\bshots\b',
@@ -1362,7 +1290,6 @@ P1_PATTERNS = [
     r'\brefuse\s+to\s+leave\b',
 ]
 
-# Priority 2 — urgent but not immediate
 P2_PATTERNS = [
     r'\bpriority\s*two\b', r'\bpriority\s*2\b', r'\bp[\-\s]?2\b',
     r'\bdomestic\b', r'\bburglary\b', r'\bbreak[\-\s]?in\b',
@@ -1404,7 +1331,6 @@ P2_PATTERNS = [
     r'\bburglar\b', r'\bburglar\w*\b',
     r'\bdispatched\b',
     r'\bpersonal\s+call\b',
-    r'\bcheck\s+on\b',
     r'\bmissing\s+juvenile\b', r'\bmissing\s+person\b',
     r'\bmissing\s+child\b', r'\battempt\s+to\s+locate\b',
     r'\bATL\b', r'\brunaway\b',
@@ -1418,7 +1344,6 @@ P2_PATTERNS = [
     r'\btrespas\w+\b',
 ]
 
-# Medical / EMS
 MEDICAL_PATTERNS = [
     r'\bmedical\b', r'\bambulance\b', r'\bems\b',
     r'\bunconsci\w+\b', r'\bunresponsive\b', r'\boverdos\w+\b',
@@ -1437,7 +1362,6 @@ MEDICAL_PATTERNS = [
     r'\bopen\s+medic\b', r'\bmedic\s+door\b',
 ]
 
-# Noise / hallucination detection — reject these
 NOISE_PHRASES = [
     "police scanner radio dispatch", "ten codes", "radio dispatch",
     "scanner radio", "t-shirt", "vintage rock", "robot", "investment",
@@ -1448,37 +1372,24 @@ NOISE_PHRASES = [
     "small fortune", "cuts his own hair",
 ]
 
-# Location extraction — ordered from most to least specific
 LOCATION_PATTERNS = [
-    # Numbered address + street with suffix
     r'(?:at|on|to|near)\s+(\d+\s+[\w\s]{2,35}?\s+(?:ave(?:nue)?|st(?:reet)?|rd|road|blvd|boulevard|dr(?:ive)?|ln|lane|way|cir(?:cle)?|ct|court|pl(?:ace)?|pkwy|parkway|hwy|highway))',
-    # Pure intersection with suffix
     r'((?:[NSEW]\s+)?[\w]+\s+(?:ave(?:nue)?|st(?:reet)?|rd|road|blvd|dr(?:ive)?|ln|way)\s+and\s+[\w\s]{3,25})',
-    # Numbered address no suffix (e.g. 5137 Finchwood)
     r'(?:at|on|to|near|of)\s+(\d+\s+[A-Z][\w\s]{2,25})',
-    # Any numbered address
     r'(\d{3,5}\s+[A-Z][\w]{3,20})',
-    # Interstate / highway
     r'\b(interstate\s+\d+|i-\d+|highway\s+\d+|hwy\s+\d+|state\s+route\s+\d+)\b',
-    # Bare street name preceded by "on", "at" (e.g. "domestic on Gracewood")
     r'(?:on|at|to|near)\s+([A-Z][a-z]{3,}(?:\s+[A-Z][a-z]{2,})?)',
-    # Known Memphis landmarks
     r'\b(beale\s+street|elvis\s+presley|graceland|overton\s+park|shelby\s+farms|mud\s+island|fedex\s+forum|autozone\s+park|the\s+med|lebonheur|st\s+jude|union\s+avenue|poplar\s+avenue|summer\s+avenue|highland\s+avenue|airways\s+boulevard|lamar\s+avenue|winchester\s+road|covington\s+pike|stage\s+road|raleigh\s+lagrange|germantown\s+road|mendenhall\s+road|hickory\s+hill|american\s+way|brooks\s+road|horn\s+lake\s+road|elvis\s+presley\s+boulevard)\b',
-    # Bare street name with suffix — no preposition or number needed
-    # e.g. "Ross Road", "Lamar Avenue", "Watkins Street"
     r'\b([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})?\s+(?:road|street|avenue|drive|lane|boulevard|way|circle|court|place|parkway))\b',
 ]
 
-# Unit extraction
 UNIT_PATTERNS = [
     r'\bunits?\s+([\d\w\-]+(?:\s*(?:and|,)\s*[\d\w\-]+)*)',
     r'\b(wp[\-\s]?\d+)\b',
     r'\b(\d{2,3})\s+(?:en\s+route|responding|on\s+scene|copy)',
 ]
 
-# Title mapping — first keyword match wins
 TITLE_MAP = [
-    # P1 — Violent
     ('active shooter',      'Active Shooter'),
     ('shots fired',         'Shots Fired'),
     ('shooting',            'Shooting'),
@@ -1528,7 +1439,6 @@ TITLE_MAP = [
     ('deceased',            'Deceased Person'),
     ('doa',                 'Dead on Arrival'),
     ('homicide hold',       'Homicide Investigation'),
-    # P2
     ('domestic',            'Domestic Disturbance'),
     ('arguing',             'Domestic Disturbance'),
     ('argument',            'Disturbance'),
@@ -1585,12 +1495,10 @@ TITLE_MAP = [
     ('narcotic',            'Drug Activity'),
     ('vandalism',           'Vandalism'),
     ('vehicle',             'Vehicle Call'),
-    # Medical
     ('suicide',             'Suicide Call'),
     ('suicidal',            'Suicidal Subject'),
     ('harm himself',        'Self-Harm Call'),
     ('harm herself',        'Self-Harm Call'),
-    ('harm himself',        'Self-Harm Call'),
     ('overdose',            'Overdose'),
     ('unconscious',         'Unconscious Person'),
     ('unresponsive',        'Unresponsive Person'),
@@ -1611,7 +1519,6 @@ TITLE_MAP = [
     ('cit',                 'Crisis Intervention'),
     ('injured',             'Injured Person'),
     ('injury',              'Injury Call'),
-    # Other
     ('enroute',             'Units En Route'),
     ('en route',            'Units En Route'),
     ('fire',                'Fire Call'),
@@ -1621,18 +1528,12 @@ TITLE_MAP = [
 
 
 def parse_incident(transcript_translated, city):
-    """
-    Rule-based incident parser — zero API cost.
-    Extracts priority, title, location, and unit from translated transcripts.
-    """
     text = transcript_translated.strip()
     tl   = text.lower()
 
-    # Reject if too short
     if len(tl) < 15:
         return {"incident": False}
 
-    # Reject hallucinations — noise phrases with no incident content
     noise_hits = sum(1 for p in NOISE_PHRASES if p in tl)
     has_incident_signal = (
         any(re.search(p, tl, re.I) for p in P1_PATTERNS) or
@@ -1642,7 +1543,6 @@ def parse_incident(transcript_translated, city):
     if noise_hits >= 1 and not has_incident_signal:
         return {"incident": False}
 
-    # Determine priority
     priority = None
     if any(re.search(p, tl, re.I) for p in P1_PATTERNS):
         priority = "p1"
@@ -1652,41 +1552,33 @@ def parse_incident(transcript_translated, city):
         priority = "p2"
 
     if priority is None:
-        priority = "p3"  # Post all calls with verified addresses
+        priority = "p3"
 
-    # Override: property crimes should never be Medical
     PROPERTY_OVERRIDES = ["shoplifting", "burglary", "larceny", "theft", "vandal",
                           "trespass", "stolen vehicle", "auto theft", "robbery"]
     if priority == "medical" and any(k in tl for k in PROPERTY_OVERRIDES):
         priority = "p1" if any(re.search(p, tl, re.I) for p in P1_PATTERNS) else "p2"
 
-    # Require minimum transcript length for P1 — reduces false positives from
-    # garbled audio that happens to contain a keyword like "armed" or "alarm"
     if priority == "p1" and len(tl.split()) < 6:
         print("  P1 transcript too short — skipping")
         return {"incident": False}
 
-    # Extract title — first keyword match
     title = None
     for keyword, label in TITLE_MAP:
         if keyword in tl:
             title = label
             break
 
-    # Extract location — try each pattern
     location = None
     for pattern in LOCATION_PATTERNS:
         m = re.search(pattern, text, re.I)
         if m:
             raw = m.group(1).strip()
-            # Clean up and title-case
             location = re.sub(r'\s+', ' ', raw).strip().title()
-            # Filter out false positives that are too short
             if len(location) > 4:
                 break
             location = None
 
-    # Extract unit
     unit = None
     for pattern in UNIT_PATTERNS:
         m = re.search(pattern, tl, re.I)
@@ -1694,11 +1586,9 @@ def parse_incident(transcript_translated, city):
             unit = m.group(1).strip().upper()
             break
 
-    # Don't save if we couldn't find a location — incomplete data
     if not location:
         return {"incident": False}
 
-    # Reject obviously bad locations
     BAD_LOCATIONS = [
         "this thing", "claim", "show down", "the area", "the scene",
         "location", "address", "service", "station", "precinct",
@@ -1706,44 +1596,37 @@ def parse_incident(transcript_translated, city):
         "delta", "echo", "foxtrot", "tango", "victor", "whiskey",
         "in here", "out here", "up here", "down here", "over here",
         "the office", "the precinct", "the station",
-        # Common false extractions from garbled audio
         "speak", "first row", "first", "second", "third", "fourth",
         "accident", "alarm", "road", "avenue", "street", "drive",
         "lane", "way", "court", "place", "alarm call", "scene call",
         "nel poppery", "nell poppery", "river damage", "damage show",
         "thank you", "order school", "the call", "the scene",
         "towel avenue", "the road", "the street",
-        # Complaint/residence words that aren't addresses
         "residence", "complainant", "complainants", "location",
         "the residence", "their residence", "his residence",
         "her residence", "front", "inside", "outside", "nearby",
         "area", "scene", "vicinity", "neighborhood",
-        # Unit designations that get extracted as addresses
         "bravo", "alpha", "charlie", "delta", "echo", "foxtrot",
         "robo", "wpha", "wpsa", "check", "disregard", "negative",
         "information national", "raise dispatch",
-        # Phrase fragments that slip through
         "transport the", "rate this", "hang you", "both fields",
         "last known addresses", "last known", "numbers", "number",
         "broadcast now", "broadcast", "units", "officers",
         "the location", "this location", "that location",
         "unknown location", "your location",
-        # Phone/radio codes mistaken as addresses
         "over the phone", "by phone", "via phone", "on the phone",
         "over the radio", "by radio", "on scene", "on the scene",
         "the phone", "phone", "radio", "dispatch",
         "walk in", "walk-in", "complainant", "callback",
-        # Interstate fragments
         "interstate 40 kids", "interstate 40 kids fighting",
         "kids fighting to st", "kids fighting",
-        # Direction words alone
         "north", "south", "east", "west",
         "1760 north", "302 south",
         "6367 south", "572 south", "572 north", "572 east", "572 west",
     ]
     if location.lower().strip() in BAD_LOCATIONS:
         return {"incident": False}
-    # Reject locations containing phone/radio language or garbage phrases
+
     loc_lower = location.lower()
     if any(phrase in loc_lower for phrase in [
         "over the phone", "by phone", "via phone", "on the phone",
@@ -1754,12 +1637,9 @@ def parse_incident(transcript_translated, city):
     ]):
         return {"incident": False}
 
-    # Reject single-word locations (must have at least 2 words)
     if len(location.strip().split()) < 2:
         return {"incident": False}
 
-    # Reject locations that are just adjectives/verbs with no street indicator
-    # Must contain a number OR a known street suffix OR be a named place
     has_number = bool(re.search(r"\d", location))
     has_suffix = bool(re.search(
         r"\b(ave|st|rd|blvd|dr|ln|way|cir|ct|pl|pkwy|hwy|road|street|avenue|drive|"
@@ -1776,22 +1656,17 @@ def parse_incident(transcript_translated, city):
         print(f"  Location rejected (no street indicators): {location}")
         return {"incident": False}
 
-    # Reject locations that are too short or just numbers
     if len(location.strip()) < 4:
         return {"incident": False}
     if re.match(r"^[\d\s\.\-]+$", location):
         return {"incident": False}
-    # Reject bare "NUMBER DIRECTION" like "6367 South" or "572 North"
     if re.match(r"^\d+\s+(North|South|East|West)$", location, re.I):
         return {"incident": False}
-    # Reject vehicle year + make patterns like "2018 Dodge"
     if re.match(r"^(19|20)\d{2}\s+\w+$", location, re.I):
         return {"incident": False}
-    # Reject locations under 5 chars or that are just one word with no number
     if re.match(r"^[A-Za-z]+$", location) and len(location) < 6:
         return {"incident": False}
 
-    # Use priority as fallback title if no keyword matched
     if not title:
         title = {
             "p1":      "Priority 1 Call",
@@ -1843,9 +1718,7 @@ def run_city(city):
 
     print(f"[{label}] Pipeline started — capturing {CHUNK_SECONDS}s chunks...")
 
-    # Rolling buffer — keep previous chunk to catch dispatches that span two chunks
     prev_transcript = ""
-    # Deduplication — track last saved to prevent duplicate posts from rolling buffer
     last_saved_key = ""
     last_saved_time = 0
 
@@ -1853,8 +1726,8 @@ def run_city(city):
         try:
             audio = capture_chunk(stream_url, CHUNK_SECONDS)
             if len(audio) < 1000:
-                print(f"[{label}] Audio chunk too small — skipping")
-                time.sleep(5)
+                print(f"[{label}] Audio chunk too small — retrying in 10s")
+                time.sleep(10)
                 continue
 
             transcript_raw = transcribe(audio)
@@ -1869,14 +1742,11 @@ def run_city(city):
             if transcript_raw != transcript_translated:
                 print(f"[{label}] Translated: {transcript_translated[:120]}...")
 
-            # Combine with previous chunk to catch multi-chunk dispatches
-            # e.g. chunk 1: "shooting at..." chunk 2: "...Winchester and Getwell"
             if prev_transcript:
                 combined = f"{prev_transcript} {transcript_translated}".strip()
             else:
                 combined = transcript_translated
 
-            # Update rolling buffer for next iteration
             prev_transcript = transcript_translated
 
             parsed = parse_incident(combined, city)
@@ -1897,7 +1767,6 @@ def run_city(city):
             lat, lng = coords
             parsed["lat"] = lat
             parsed["lng"] = lng
-            # Use intersection label as location if available
             if intersection_label:
                 parsed["location"] = intersection_label
 
@@ -1912,7 +1781,6 @@ def run_city(city):
             if is_dispatch:  print(f"  📡 Dispatcher call: {unit}")
             if gang_hotspot: print(f"  ⚠ Gang hotspot: {gang_zone}")
 
-            # Deduplication — skip if same location+priority saved in last 3 minutes
             dedup_key = f"{parsed.get('location','')}|{priority}"
             if dedup_key == last_saved_key and (time.time() - last_saved_time) < 180:
                 print(f"[{label}] Duplicate suppressed — same call saved recently")
@@ -1925,7 +1793,6 @@ def run_city(city):
                 )
                 last_saved_key = dedup_key
                 last_saved_time = time.time()
-                # Clear buffer after save — prevents bleed into next call
                 prev_transcript = ""
 
             tags = []
@@ -1939,17 +1806,9 @@ def run_city(city):
                 f"{tag_str}"
             )
 
-        except requests.exceptions.ConnectionError:
-            print(f"[{label}] Stream connection lost — retrying in 10s")
-            time.sleep(10)
-        except requests.exceptions.HTTPError as e:
-            print(f"[{label}] HTTP error: {e} — retrying in 15s")
-            time.sleep(15)
-        except json.JSONDecodeError:
-            print(f"[{label}] GPT returned invalid JSON — skipping")
         except Exception as e:
-            print(f"[{label}] Error: {e} — retrying in 5s")
-            time.sleep(5)
+            print(f"[{label}] Error: {e} — retrying in 10s")
+            time.sleep(10)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -1974,7 +1833,6 @@ if __name__ == "__main__":
         for e in errors: print(f"  ✗ {e}")
         exit(1)
 
-    # Install beautifulsoup4 if not present
     try:
         from bs4 import BeautifulSoup
     except ImportError:
@@ -1984,19 +1842,16 @@ if __name__ == "__main__":
 
     threads = []
 
-    # Heatmap — load static points once at startup
     hm = threading.Thread(target=load_heatmap, daemon=True, name="heatmap")
     hm.start()
     threads.append(hm)
     print("  ✓ Started: Heatmap loader")
 
-    # Fugitive scraper — runs at startup then weekly
     fg = threading.Thread(target=fugitive_scrape_loop, daemon=True, name="fugitives")
     fg.start()
     threads.append(fg)
     print("  ✓ Started: Fugitive scraper (weekly)")
 
-    # Memphis scanner
     for city in CITIES:
         t = threading.Thread(target=run_city, args=(city,), daemon=True, name=city)
         t.start()
