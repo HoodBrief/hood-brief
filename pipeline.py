@@ -1125,41 +1125,69 @@ def geocode_location(location_text, city):
 
 
 # ══════════════════════════════════════════════════════════════════
-#  AUDIO CAPTURE — ffmpeg (supports MP3 streams AND HLS m3u8)
+#  AUDIO CAPTURE — streamlink + ffmpeg
+#  streamlink handles Broadcastify auth and token refresh natively.
+#  Credentials passed via environment variables.
 # ══════════════════════════════════════════════════════════════════
 
+BROADCASTIFY_USERNAME = os.environ.get("BROADCASTIFY_USERNAME", "")
+BROADCASTIFY_PASSWORD = os.environ.get("BROADCASTIFY_PASSWORD", "")
+MEMPHIS_FEED_ID       = "215"
+
 def capture_chunk(stream_url, duration=CHUNK_SECONDS):
-    """Capture audio chunk using ffmpeg — supports both MP3 streams and HLS m3u8."""
+    """
+    Capture a chunk of audio using streamlink.
+    stream_url can be a Broadcastify feed URL or a direct HLS/MP3 URL.
+    streamlink handles login, token refresh, and HLS segmentation.
+    """
     tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
             tmp_path = f.name
 
-        subprocess.run(
-            [
-                "ffmpeg", "-y",
-                "-i", stream_url,
-                "-t", str(duration),
-                "-acodec", "libmp3lame",
-                "-ar", "16000",
-                "-ac", "1",
-                "-q:a", "4",
-                tmp_path,
-            ],
+        cmd = [
+            "streamlink",
+            "--output", tmp_path,
+            "--hls-duration", str(duration),
+            "--hls-live-restart",
+            "--quiet",
+        ]
+
+        # Add Broadcastify credentials if available
+        if BROADCASTIFY_USERNAME and BROADCASTIFY_PASSWORD:
+            cmd += [
+                "--broadcastify-username", BROADCASTIFY_USERNAME,
+                "--broadcastify-password", BROADCASTIFY_PASSWORD,
+            ]
+
+        cmd += [stream_url, "best"]
+
+        result = subprocess.run(
+            cmd,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=duration + 30,
+            stderr=subprocess.PIPE,
+            timeout=duration + 60,
         )
-        with open(tmp_path, "rb") as f:
-            return f.read()
+
+        if result.returncode != 0:
+            err = result.stderr.decode("utf-8", errors="ignore").strip()
+            print(f"  [streamlink] Error: {err[:200]}")
+            return b""
+
+        if os.path.exists(tmp_path):
+            with open(tmp_path, "rb") as f:
+                return f.read()
+        return b""
+
     except subprocess.TimeoutExpired:
-        print("  [ffmpeg] Timeout — stream may be stalled")
+        print("  [streamlink] Timeout — stream may be stalled")
         return b""
     except FileNotFoundError:
-        print("  [ffmpeg] ffmpeg not found — install it in your Railway Dockerfile or nixpacks config")
+        print("  [streamlink] streamlink not found — installing...")
+        os.system("pip install streamlink --break-system-packages -q")
         return b""
     except Exception as e:
-        print(f"  [ffmpeg] Error: {e}")
+        print(f"  [streamlink] Error: {e}")
         return b""
     finally:
         if tmp_path and os.path.exists(tmp_path):
@@ -1722,9 +1750,15 @@ def run_city(city):
     last_saved_key = ""
     last_saved_time = 0
 
+    # Use Broadcastify feed URL directly — streamlink handles token refresh
+    if city == "memphis":
+        active_url = f"https://www.broadcastify.com/listen/feed/{MEMPHIS_FEED_ID}"
+    else:
+        active_url = stream_url
+
     while True:
         try:
-            audio = capture_chunk(stream_url, CHUNK_SECONDS)
+            audio = capture_chunk(active_url, CHUNK_SECONDS)
             if len(audio) < 1000:
                 print(f"[{label}] Audio chunk too small — retrying in 10s")
                 time.sleep(10)
@@ -1814,23 +1848,26 @@ def run_city(city):
 # ══════════════════════════════════════════════════════════════════
 #  ENTRY POINT
 # ══════════════════════════════════════════════════════════════════
+
 if __name__ == "__main__":
-    # Ensure ffmpeg is available
     import shutil
     if not shutil.which("ffmpeg"):
         print("[Setup] Installing ffmpeg...")
         os.system("apt-get update -qq && apt-get install -y ffmpeg -qq")
+    if not shutil.which("streamlink"):
+        print("[Setup] Installing streamlink...")
+        os.system("pip install streamlink --break-system-packages -q")
+
     print("╔══════════════════════════════════════════╗")
     print("║  Hood Brief — Pipeline Starting          ║")
     print("║  Memphis, TN — MPD Only                  ║")
     print("╚══════════════════════════════════════════╝")
 
     errors = []
-    if not SUPABASE_URL:   errors.append("SUPABASE_URL not set")
-    if not SUPABASE_KEY:   errors.append("SUPABASE_KEY not set")
-    for city, info in CITIES.items():
-        if not info["stream_url"]:
-            errors.append(f"{city.upper()}_STREAM_URL not set")
+    if not SUPABASE_URL:          errors.append("SUPABASE_URL not set")
+    if not SUPABASE_KEY:          errors.append("SUPABASE_KEY not set")
+    if not BROADCASTIFY_USERNAME: errors.append("BROADCASTIFY_USERNAME not set")
+    if not BROADCASTIFY_PASSWORD: errors.append("BROADCASTIFY_PASSWORD not set")
 
     if errors:
         print("\nMissing configuration:")
