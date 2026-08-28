@@ -1134,53 +1134,102 @@ BROADCASTIFY_USERNAME = os.environ.get("BROADCASTIFY_USERNAME", "")
 BROADCASTIFY_PASSWORD = os.environ.get("BROADCASTIFY_PASSWORD", "")
 MEMPHIS_FEED_ID       = "215"
 
+_bc_session = None
+
+def get_broadcastify_stream_url(feed_id):
+    """
+    Log in to Broadcastify and scrape a fresh HLS m3u8 URL.
+    Re-authenticates automatically if session expires.
+    """
+    global _bc_session
+
+    def login():
+        global _bc_session
+        s = requests.Session()
+        s.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
+        s.get("https://www.broadcastify.com/login/", timeout=10)
+        resp = s.post(
+            "https://www.broadcastify.com/login/",
+            data={"username": BROADCASTIFY_USERNAME, "password": BROADCASTIFY_PASSWORD, "action": "auth"},
+            timeout=15,
+            allow_redirects=True,
+        )
+        if "logout" in resp.text.lower():
+            print("  [Broadcastify] Login successful")
+            _bc_session = s
+        else:
+            print("  [Broadcastify] Login failed — check BROADCASTIFY_USERNAME / BROADCASTIFY_PASSWORD")
+            _bc_session = None
+
+    if not _bc_session:
+        login()
+    if not _bc_session:
+        return None
+
+    for attempt in range(2):
+        try:
+            r = _bc_session.get(
+                f"https://www.broadcastify.com/listen/feed/{feed_id}",
+                timeout=15,
+            )
+            # m3u8 URL in page source
+            m = re.search(r'(https://[a-z0-9\-]+\.broadcastify\.com/[^\s"\']+\.m3u8[^\s"\']*)', r.text)
+            if m:
+                print(f"  [Broadcastify] Fresh m3u8 URL scraped")
+                return m.group(1)
+            # JS variable fallback
+            m = re.search(r'["\']?(stream(?:Url|URL|url))["\']?\s*[:=]\s*["\']([^"\']+)["\']', r.text)
+            if m:
+                print(f"  [Broadcastify] JS stream URL found")
+                return m.group(2)
+            # Session may have expired — re-login once
+            print("  [Broadcastify] URL not found in page — re-logging in")
+            _bc_session = None
+            login()
+        except Exception as e:
+            print(f"  [Broadcastify] Scrape error: {e}")
+            _bc_session = None
+            login()
+
+    print("  [Broadcastify] Could not get stream URL after retry")
+    return None
+
+
 def capture_chunk(stream_url, duration=CHUNK_SECONDS):
-    """
-    Capture a chunk of audio using streamlink.
-    stream_url can be a Broadcastify feed URL or a direct HLS/MP3 URL.
-    streamlink handles login, token refresh, and HLS segmentation.
-    """
+    """Capture audio chunk using ffmpeg from an HLS m3u8 or direct MP3 URL."""
     tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
             tmp_path = f.name
 
-        cmd = [
-            "streamlink",
-            "--output", tmp_path,
-            "--hls-duration", str(duration),
-            "--hls-live-restart",
-            "--quiet",
-            stream_url,
-            "best",
-        ]
-
-        result = subprocess.run(
-            cmd,
+        subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-i", stream_url,
+                "-t", str(duration),
+                "-acodec", "libmp3lame",
+                "-ar", "16000",
+                "-ac", "1",
+                "-q:a", "4",
+                tmp_path,
+            ],
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            timeout=duration + 60,
+            stderr=subprocess.DEVNULL,
+            timeout=duration + 30,
         )
-
-        if result.returncode != 0:
-            err = result.stderr.decode("utf-8", errors="ignore").strip()
-            print(f"  [streamlink] Error: {err[:200]}")
-            return b""
-
         if os.path.exists(tmp_path):
             with open(tmp_path, "rb") as f:
                 return f.read()
         return b""
 
     except subprocess.TimeoutExpired:
-        print("  [streamlink] Timeout — stream may be stalled")
+        print("  [ffmpeg] Timeout — stream may be stalled")
         return b""
     except FileNotFoundError:
-        print("  [streamlink] streamlink not found — installing...")
-        os.system("pip install streamlink --break-system-packages -q")
+        print("  [ffmpeg] ffmpeg not found")
         return b""
     except Exception as e:
-        print(f"  [streamlink] Error: {e}")
+        print(f"  [ffmpeg] Error: {e}")
         return b""
     finally:
         if tmp_path and os.path.exists(tmp_path):
@@ -1743,14 +1792,19 @@ def run_city(city):
     last_saved_key = ""
     last_saved_time = 0
 
-    # Use Broadcastify feed URL directly — streamlink handles token refresh
-    if city == "memphis":
-        active_url = f"https://www.broadcastify.com/listen/feed/{MEMPHIS_FEED_ID}"
-    else:
-        active_url = stream_url
-
     while True:
         try:
+            # Fetch a fresh m3u8 URL each loop — tokens expire every ~30 min
+            if city == "memphis":
+                active_url = get_broadcastify_stream_url(MEMPHIS_FEED_ID) or stream_url
+            else:
+                active_url = stream_url
+
+            if not active_url:
+                print(f"[{label}] No stream URL — retrying in 30s")
+                time.sleep(30)
+                continue
+
             audio = capture_chunk(active_url, CHUNK_SECONDS)
             if len(audio) < 1000:
                 print(f"[{label}] Audio chunk too small — retrying in 10s")
