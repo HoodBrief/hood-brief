@@ -1185,10 +1185,13 @@ def get_broadcastify_stream_url(feed_id):
                 url = m.group(1).replace("\\/", "/")
                 print(f"  [Broadcastify] Fresh m3u8 URL scraped")
                 return url
-            # hlsUrl JS variable
-            m = re.search(r'hlsUrl\s*:\s*"((?:[^"\\]|\\.)+)"', text)
-            if m:
-                url = m.group(1).replace("\\/", "/")
+            # hlsUrl + sessionId JS variables — combine into full authenticated URL
+            hls_m = re.search(r'hlsUrl\s*:\s*"((?:[^"\\]|\\.)+)"', text)
+            sid_m = re.search(r'sessionId\s*:\s*"([^"]+)"', text)
+            if hls_m:
+                url = hls_m.group(1).replace("\\/", "/")
+                if sid_m:
+                    url = f"{url}?s={sid_m.group(1)}"
                 print(f"  [Broadcastify] hlsUrl found: {url}")
                 return url
             # JS variable fallback
