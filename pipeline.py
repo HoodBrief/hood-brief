@@ -1193,17 +1193,17 @@ def get_broadcastify_stream_url(feed_id):
                 if sid_m:
                     url = f"{url}?s={sid_m.group(1)}"
                 print(f"  [Broadcastify] hlsUrl found: {url}")
-                return url
+                return url, dict(_bc_session.cookies)
             # JS variable fallback
             m = re.search(r'["\']?(stream(?:Url|URL|url))["\']?\s*[:=]\s*["\']([^"\']+)["\']', text)
             if m:
                 print(f"  [Broadcastify] JS stream URL found")
-                return m.group(2).replace("\\/", "/")
+                return m.group(2).replace("\\/", "/"), dict(_bc_session.cookies)
             # cdnstream fallback
             m = re.search(r'(https:\\/\\/[^\s"\']+cdnstream[^\s"\']+)', text)
             if m:
                 print(f"  [Broadcastify] cdnstream URL found")
-                return m.group(1).replace("\\/", "/")
+                return m.group(1).replace("\\/", "/"), dict(_bc_session.cookies)
             # Session may have expired — re-login once
             print("  [Broadcastify] URL not found in page — re-logging in")
             _bc_session = None
@@ -1214,37 +1214,51 @@ def get_broadcastify_stream_url(feed_id):
             login()
 
     print("  [Broadcastify] Could not get stream URL after retry")
-    return None
+    return None, None
 
 
-def capture_chunk(stream_url, duration=CHUNK_SECONDS):
-    """Capture audio chunk using ffmpeg from an HLS m3u8 or direct MP3 URL."""
+def capture_chunk(stream_url, duration=CHUNK_SECONDS, cookies=None):
+    """Capture audio chunk using ffmpeg — passes session cookies to beat 403."""
     tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
             tmp_path = f.name
 
+        cmd = ["ffmpeg", "-y"]
+
+        if cookies:
+            cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
+            cmd += [
+                "-headers",
+                (
+                    f"Cookie: {cookie_str}\r\n"
+                    "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\n"
+                    "Referer: https://www.broadcastify.com/\r\n"
+                ),
+            ]
+
+        cmd += [
+            "-i", stream_url,
+            "-t", str(duration),
+            "-acodec", "libmp3lame",
+            "-ar", "16000",
+            "-ac", "1",
+            "-q:a", "4",
+            tmp_path,
+        ]
+
         result = subprocess.run(
-            [
-                "ffmpeg", "-y",
-                "-i", stream_url,
-                "-t", str(duration),
-                "-acodec", "libmp3lame",
-                "-ar", "16000",
-                "-ac", "1",
-                "-q:a", "4",
-                tmp_path,
-            ],
+            cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             timeout=duration + 30,
         )
         if result.returncode != 0:
             err = result.stderr.decode("utf-8", errors="ignore")
-            # Print last 3 lines of ffmpeg output
             lines = [l for l in err.strip().splitlines() if l.strip()]
             for line in lines[-3:]:
                 print(f"  [ffmpeg] {line}")
+
         if os.path.exists(tmp_path):
             with open(tmp_path, "rb") as f:
                 return f.read()
@@ -1823,8 +1837,10 @@ def run_city(city):
     while True:
         try:
             # Fetch a fresh m3u8 URL each loop — tokens expire every ~30 min
+            bc_cookies = None
             if city == "memphis":
-                active_url = get_broadcastify_stream_url(MEMPHIS_FEED_ID) or stream_url
+                result = get_broadcastify_stream_url(MEMPHIS_FEED_ID)
+                active_url, bc_cookies = result if result[0] else (stream_url, None)
             else:
                 active_url = stream_url
 
@@ -1833,7 +1849,7 @@ def run_city(city):
                 time.sleep(30)
                 continue
 
-            audio = capture_chunk(active_url, CHUNK_SECONDS)
+            audio = capture_chunk(active_url, CHUNK_SECONDS, cookies=bc_cookies)
             if len(audio) < 1000:
                 print(f"[{label}] Audio chunk too small — retrying in 10s")
                 time.sleep(10)
