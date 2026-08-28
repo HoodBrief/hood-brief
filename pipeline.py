@@ -1224,7 +1224,7 @@ def capture_chunk(stream_url, duration=CHUNK_SECONDS):
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
             tmp_path = f.name
 
-        subprocess.run(
+        result = subprocess.run(
             [
                 "ffmpeg", "-y",
                 "-i", stream_url,
@@ -1236,9 +1236,15 @@ def capture_chunk(stream_url, duration=CHUNK_SECONDS):
                 tmp_path,
             ],
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             timeout=duration + 30,
         )
+        if result.returncode != 0:
+            err = result.stderr.decode("utf-8", errors="ignore")
+            # Print last 3 lines of ffmpeg output
+            lines = [l for l in err.strip().splitlines() if l.strip()]
+            for line in lines[-3:]:
+                print(f"  [ffmpeg] {line}")
         if os.path.exists(tmp_path):
             with open(tmp_path, "rb") as f:
                 return f.read()
